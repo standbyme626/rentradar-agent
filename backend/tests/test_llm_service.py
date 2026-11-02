@@ -1,0 +1,66 @@
+from app.services import llm_service
+from app.services.agent_service import _merge_llm_conditions, parse_conditions
+
+
+def test_extract_json_with_fence():
+    data = llm_service._extract_json('```json\n{"budget": 4000, "must": ["电梯"]}\n```')
+    assert data == {"budget": 4000, "must": ["电梯"]}
+
+
+def test_validate_intent_filters_invalid_values():
+    parsed = llm_service._validate_intent(
+        {
+            "budget": 3500,
+            "commute": 200,
+            "layout": "两居",
+            "district": "龙岗区",
+            "must": ["电梯", "豪宅"],
+            "company": "深圳会展中心",
+        }
+    )
+    assert parsed["budget"] == 3500
+    assert "commute" not in parsed
+    assert "layout" not in parsed
+    assert parsed["district"] == "龙岗区"
+    assert parsed["must"] == ["电梯"]
+
+
+def test_merge_meta_sums_tokens():
+    merged = llm_service.merge_meta(
+        {
+            "model": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "cost": 0.0,
+            "fallback": False,
+            "error": None,
+            "calls": [["llm_parse", "m", "1ms", "100+20"]],
+        },
+        {
+            "model": "",
+            "prompt_tokens": 50,
+            "completion_tokens": 10,
+            "cost": 0.0,
+            "fallback": True,
+            "error": "answer fallback",
+            "calls": [],
+        },
+    )
+    assert merged["model"] == "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+    assert merged["prompt_tokens"] == 150
+    assert merged["completion_tokens"] == 30
+    assert merged["fallback"] is False
+    assert merged["error"] == "answer fallback"
+
+
+def test_merge_llm_conditions():
+    rule = parse_conditions("预算 4500，5 号线，通勤 40 分钟内，最好有电梯")
+    merged = _merge_llm_conditions(
+        rule,
+        {"budget": 3500, "layout": "2室", "must": ["电梯"], "district": None},
+    )
+    assert merged["budget"] == 3500
+    assert merged["layout"] == "2室"
+    assert merged["commute"] == 40
+    assert "电梯" in merged["must"]
+    assert merged["isLong"] is False

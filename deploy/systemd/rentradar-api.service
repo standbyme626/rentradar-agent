@@ -1,0 +1,17 @@
+[Unit]
+Description=RentRadar API
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kkk
+Group=kkk
+WorkingDirectory=/home/kkk/Project/rentradar/backend
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/kkk/Project/rentradar/backend/.venv/bin/uvicorn app.main:app --host 192.168.31.197 --port 8010
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

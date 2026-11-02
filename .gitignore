@@ -1,0 +1,29 @@
+# secrets
+.env
+.secrets/
+*.pem
+*.key
+
+# reference clones (third-party, kept out of this repo)
+reference/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# runtime data
+logs/
+data/
+state/
+images/
+*.log

@@ -1,0 +1,2089 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RentRadar · 管理控制台</title>
+<style>
+:root{
+  --bg:#0b0f14; --sf:#121820; --sf2:#182029; --sf3:#1e2732; --sf4:#252f3b;
+  --bd:#26313d; --bd2:#33404e;
+  --tx:#e3e9f0; --tx2:#93a1b1; --tx3:#64748b;
+  --ac:#4c9aff; --acbg:#4c9aff1f; --acbd:#4c9aff55;
+  --gn:#3fb950; --gnbg:#3fb9501f;
+  --am:#d9a441; --ambg:#d9a4411f;
+  --rd:#f0554e; --rdbg:#f0554e1f;
+  --pp:#a97bf0; --ppbg:#a97bf01f;
+  --cy:#3ec6c6; --cybg:#3ec6c61f;
+  --r:9px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:0 0}::-webkit-scrollbar-thumb{background:#2c3846;border-radius:4px}
+.app{display:flex;min-height:100vh}
+.side{width:206px;flex:0 0 206px;background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{padding:15px 16px 13px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:9px}
+.brand .lg{width:27px;height:27px;border-radius:7px;background:linear-gradient(135deg,#4c9aff,#a97bf0);flex:0 0 27px}
+.brand .bn{font-size:13.5px;font-weight:650;letter-spacing:-.2px}
+.brand .bs{font-size:10px;color:var(--tx3);margin-top:-2px}
+.nvgrp{font-size:10px;color:var(--tx3);font-weight:600;letter-spacing:.7px;padding:13px 16px 5px}
+.nv{display:flex;align-items:center;gap:9px;padding:7px 12px;margin:1px 7px;border-radius:7px;color:var(--tx2);cursor:pointer;font-size:12.5px;transition:.12s;position:relative}
+.nv:hover{background:var(--sf2);color:var(--tx)}
+.nv.on{background:var(--acbg);color:var(--ac);font-weight:500}
+.nv svg{width:14px;height:14px;flex:0 0 14px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.nv .bdg{margin-left:auto;font-size:10px;background:var(--sf4);color:var(--tx2);padding:1px 6px;border-radius:8px;font-weight:600}
+.nv.on .bdg{background:#4c9aff33;color:var(--ac)}
+.nv .bdg.rd{background:var(--rdbg);color:var(--rd)}
+.sideft{margin-top:auto;padding:12px 16px;border-top:1px solid var(--bd);font-size:10.5px;color:var(--tx3);line-height:1.8}
+.mn{flex:1;min-width:0;display:flex;flex-direction:column}
+.tp{height:50px;flex:0 0 50px;border-bottom:1px solid var(--bd);background:var(--sf);display:flex;align-items:center;gap:12px;padding:0 20px;position:sticky;top:0;z-index:30}
+.tp h1{font-size:14.5px;font-weight:600}
+.tp .cr{font-size:11.5px;color:var(--tx3)}
+.tp .rt{margin-left:auto;display:flex;align-items:center;gap:9px}
+.chip{font-size:11.5px;padding:3px 10px;border-radius:16px;border:1px solid var(--bd);color:var(--tx2);display:flex;align-items:center;gap:6px;background:var(--sf2);white-space:nowrap}
+.chip .dt{width:6px;height:6px;border-radius:50%;background:var(--gn)}
+.chip .dt.rd{background:var(--rd)}.chip .dt.am{background:var(--am)}
+.av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer}
+.bd{padding:20px;flex:1;max-width:1500px;width:100%}
+.pg{display:none}.pg.on{display:block}
+.banner{display:flex;align-items:flex-start;gap:11px;background:var(--ambg);border:1px solid #d9a44155;border-radius:8px;padding:12px 15px;margin-bottom:15px;font-size:12.5px;color:#e3c07a;line-height:1.7}
+.banner .bi{flex:0 0 auto;margin-top:1px}
+.banner b{color:#f2d399}
+.banner .btn{margin-left:auto;flex:0 0 auto}
+.cd{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:15px 17px}
+.cd>h3{font-size:13px;font-weight:600;margin-bottom:13px;display:flex;align-items:center;gap:8px}
+.cd>h3 .hn{font-size:11px;color:var(--tx3);font-weight:400;margin-left:auto}
+.gr{display:grid;gap:13px}
+.g6{grid-template-columns:repeat(auto-fit,minmax(148px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(400px,1fr))}
+.kp{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:13px 15px;position:relative;overflow:hidden}
+.kp .l{font-size:11.5px;color:var(--tx2);display:flex;align-items:center;gap:6px}
+.kp .v{font-size:22px;font-weight:650;letter-spacing:-.5px;line-height:1.2;margin:3px 0 1px}
+.kp .d{font-size:10.5px;color:var(--tx3)}
+.kp .d b{color:var(--gn);font-weight:600}
+.kp .d b.dn{color:var(--rd)}
+.kp::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ac);opacity:.5}
+.kp.g::after{background:var(--gn)}.kp.a::after{background:var(--am)}.kp.r::after{background:var(--rd)}.kp.p::after{background:var(--pp)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:600;color:var(--tx2);font-size:11.5px;padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--sf3);vertical-align:middle}
+tbody tr{transition:.1s}tbody tr:hover{background:var(--sf2)}
+td .nm{font-weight:500}
+td .sm{font-size:10.5px;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;margin-top:1px}
+.tg{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:14px;white-space:nowrap;line-height:1.5}
+.tg::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+.tg.n::before{display:none}
+.tg.g{background:var(--gnbg);color:var(--gn)}.tg.a{background:var(--ambg);color:var(--am)}
+.tg.r{background:var(--rdbg);color:var(--rd)}.tg.b{background:var(--acbg);color:var(--ac)}
+.tg.p{background:var(--ppbg);color:var(--pp)}.tg.c{background:var(--cybg);color:var(--cy)}
+.tg.n{background:var(--sf3);color:var(--tx2)}
+.mo{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+.dm{color:var(--tx3)}.mu{color:var(--tx2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;padding:6px 14px;border-radius:7px;border:1px solid var(--bd2);background:var(--sf2);color:var(--tx);cursor:pointer;transition:.12s;font-family:inherit;white-space:nowrap}
+.btn:hover{background:var(--sf3);border-color:var(--tx3)}
+.btn.p{background:#1f6feb;border-color:#1f6feb;color:#fff}.btn.p:hover{background:#2d7ff9}
+.btn.d{border-color:#f0554e55;color:var(--rd)}.btn.d:hover{background:var(--rdbg)}
+.btn.s{padding:4px 10px;font-size:11.5px;border-radius:6px}
+.btn.gh{background:0 0;border-color:transparent;color:var(--tx2)}.btn.gh:hover{background:var(--sf2);color:var(--tx)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=search],select,textarea{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:7px 11px;color:var(--tx);font-size:12.5px;font-family:inherit;outline:none;transition:.12s}
+input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px var(--acbg)}
+select{cursor:pointer}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--bd);margin-bottom:16px;overflow-x:auto}
+.tb{padding:8px 14px;font-size:12.5px;color:var(--tx2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.12s;white-space:nowrap}
+.tb:hover{color:var(--tx)}
+.tb.on{color:var(--ac);border-bottom-color:var(--ac);font-weight:600}
+.tb .c{font-size:10px;background:var(--sf3);padding:0 5px;border-radius:7px;margin-left:5px}
+.tpane{display:none}.tpane.on{display:block}
+.sw{width:34px;height:19px;border-radius:10px;background:var(--sf4);position:relative;cursor:pointer;transition:.15s;flex:0 0 34px}
+.sw::after{content:'';position:absolute;width:15px;height:15px;border-radius:50%;background:#8b98a8;top:2px;left:2px;transition:.15s}
+.sw.on{background:#1f6feb55}.sw.on::after{background:var(--ac);left:17px}
+.bar{height:5px;background:var(--sf4);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--ac)}
+.bar i.am{background:var(--am)}.bar i.rd{background:var(--rd)}.bar i.gn{background:var(--gn)}
+.pr{display:flex;flex-direction:column;gap:11px}
+.pr .rw{font-size:12px}
+.pr .rw .hd{display:flex;justify-content:space-between;margin-bottom:5px;color:var(--tx2)}
+.mask{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.mask.on{display:flex}
+.modal{background:var(--sf);border:1px solid var(--bd2);border-radius:12px;width:100%;max-width:680px;max-height:88vh;overflow:auto;box-shadow:0 20px 60px #000a}
+.modal .mh{padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--sf);z-index:2}
+.modal .mh h3{font-size:14px;font-weight:600;flex:1}
+.modal .mb{padding:18px 20px}
+.modal .mf{padding:14px 20px;border-top:1px solid var(--bd);display:flex;gap:9px;justify-content:flex-end;position:sticky;bottom:0;background:var(--sf)}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:12px;color:var(--tx2);margin-bottom:6px}
+.fld input,.fld select,.fld textarea{width:100%}
+.fld .hint{font-size:11px;color:var(--tx3);margin-top:5px;line-height:1.6}
+.flexrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+.pgnt{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding-top:13px;font-size:11.5px;color:var(--tx3)}
+.pgnt .pg2{width:24px;height:24px;border-radius:6px;border:1px solid var(--bd);background:var(--sf2);color:var(--tx2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11.5px}
+.pgnt .pg2.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.empty{padding:40px 20px;text-align:center;color:var(--tx3);font-size:12.5px}
+.pipe{display:flex;align-items:center;gap:9px;padding:10px 0;border-bottom:1px solid var(--sf3);font-size:12.5px}
+.pipe:last-child{border-bottom:none}
+.pipe .st{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+.pipe .st.g{background:var(--gn)}.pipe .st.a{background:var(--am)}.pipe .st.r{background:var(--rd)}.pipe .st.n{background:var(--tx3)}
+.pipe .nm{width:120px;color:var(--tx)}
+.pipe .ds{flex:1;color:var(--tx3);font-size:11.5px}
+.flow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--tx2)}
+.flow .bx{background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:7px 10px}
+.flow .bx.on{border-color:var(--acbd);color:var(--ac);background:var(--acbg)}
+.flow .bx.off{opacity:.5;border-style:dashed}
+.flow .ar{color:var(--tx3)}
+.lg{display:flex;flex-direction:column}
+.lg .it{display:flex;gap:12px;padding-bottom:15px;position:relative}
+.lg .it:not(:last-child)::before{content:'';position:absolute;left:9px;top:21px;bottom:0;width:1.5px;background:var(--bd)}
+.lg .it .dt{width:19px;height:19px;border-radius:50%;background:var(--sf3);border:1.5px solid var(--bd2);flex:0 0 19px;z-index:1;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--tx3)}
+.lg .it.ok .dt{background:var(--gn);border-color:var(--gn);color:#fff}
+.lg .it.er .dt{background:var(--rd);border-color:var(--rd);color:#fff}
+.lg .it .ct{flex:1;font-size:12.5px}
+.lg .it .tt{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.lg .it .tm{font-size:10.5px;color:var(--tx3);font-family:ui-monospace,Menlo,monospace}
+.lg .it .ds{font-size:11.5px;color:var(--tx2);line-height:1.65}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#e3e9f0;color:#0b0f14;font-size:12.5px;padding:10px 16px;border-radius:9px;opacity:0;pointer-events:none;transition:.2s;z-index:200}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(max-width:1000px){.side{width:60px;flex:0 0 60px}.brand .bn,.brand .bs,.nv span:not(.bdg),.nvgrp,.sideft{display:none}.nv{justify-content:center}}
+@media(max-width:760px){.bd{padding:13px}.g2{grid-template-columns:1fr}.tp{padding:0 12px}.tp .chip{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="side">
+  <div class="brand"><div class="lg"></div><div><div class="bn">RentRadar</div><div class="bs">管理控制台 v0.2</div></div></div>
+  <div class="nvgrp">概览</div>
+  <div class="nv on" data-p="dash"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg><span>工作台</span></div>
+  <div class="nvgrp">数据</div>
+  <div class="nv" data-p="listings"><svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 21v-8h6v8"/></svg><span>房源库</span><span class="bdg">1130</span></div>
+  <div class="nv" data-p="commute"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a4 4 0 014 4v5.5"/></svg><span>小区与通勤</span><span class="bdg">498</span></div>
+  <div class="nv" data-p="images"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l5-4 4 3 3-2 6 5"/></svg><span>图片 / AI</span><span class="bdg rd">0</span></div>
+  <div class="nvgrp">运营</div>
+  <div class="nv" data-p="tasks"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>采集任务</span><span class="bdg rd">暂停</span></div>
+  <div class="nv" data-p="budget"><svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z"/><path d="M4 7l3-3h10l3 3"/><path d="M16 13h2"/></svg><span>预算与设置</span></div>
+  <div class="nv" data-p="logs"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>运行日志</span><span class="bdg">10</span></div>
+  <div class="sideft">本地库 · 5 号线<br>1130 套 / 672 已评分<br>API :8010 · 无鉴权</div>
+</aside>
+
+<div class="mn">
+  <div class="tp">
+    <h1 id="pageTitle">工作台</h1><span class="cr" id="crumb">概览 / 工作台</span>
+    <div class="rt">
+      <span class="chip"><span class="dt"></span>API ok</span>
+      <span class="chip"><span class="dt rd"></span>采集暂停 · 人机验证</span>
+      <span class="chip"><span class="dt am"></span>高德 876 / 5000</span>
+      <div class="av">K</div>
+    </div>
+  </div>
+  <div class="bd">
+
+  <!-- ================= 工作台 ================= -->
+  <div class="pg on" id="p-dash">
+    <div class="banner">
+      <div class="bi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#d9a441" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.4 18a1.8 1.8 0 001.6 2.7h16a1.8 1.8 0 001.6-2.7L13.7 3.9a1.9 1.9 0 00-3.4 0z"/></svg></div>
+      <div><b>采集已暂停。</b>贝壳触发人机验证；`rentradar-worker` / `rentradar-scheduler` 已停止，任务 1 `enabled=false`。先在 Windows Chrome 手动通过验证，再恢复服务。</div>
+      <button class="btn s" onclick="toast('恢复前请先在 Chrome 过验证码')">查看处理步骤</button>
+    </div>
+
+    <div class="gr g6">
+      <div class="kp"><div class="l">房源总数</div><div class="v" id="sListings">1130</div><div class="d">5 号线 <b id="sLine5">900</b> 套</div></div>
+      <div class="kp g"><div class="l">已评分</div><div class="v" id="sScored">672</div><div class="d">中位 <b id="sMedian">55.5</b> 分</div></div>
+      <div class="kp p"><div class="l">≥ 75 分</div><div class="v" id="s75">34</div><div class="d">最高 <b id="sMax">92</b> 分</div></div>
+      <div class="kp"><div class="l">小区 / 有坐标</div><div class="v"><span id="sComm">498</span><span style="font-size:13px;color:var(--tx3)"> / <span id="sGeo">254</span></span></div><div class="d">地理编码覆盖 51%</div></div>
+      <div class="kp a"><div class="l">通勤样本</div><div class="v" id="sCommute">285</div><div class="d">覆盖 <b id="sCommuteComm">248</b> 个小区</div></div>
+      <div class="kp r"><div class="l">高德本月</div><div class="v">876<span style="font-size:13px;color:var(--tx3)"> / 5000</span></div><div class="d"><b class="dn">17.5%</b> · 估算</div></div>
+    </div>
+
+    <div class="gr g2" style="margin-top:14px">
+      <div class="cd">
+        <h3>数据管线 <span class="hn">按“候选优先”改造中</span></h3>
+        <div class="pipe"><span class="st r"></span><span class="nm">列表采集</span><span class="ds">5 号线 30 页 · 快 30min / 慢 360min</span><span class="tg r">暂停</span></div>
+        <div class="pipe"><span class="st g"></span><span class="nm">基础评分</span><span class="ds">硬过滤 + 性价比/条件/新鲜度 · 无外部调用</span><span class="tg g">正常</span></div>
+        <div class="pipe"><span class="st a"></span><span class="nm">通勤富化</span><span class="ds">248/498 小区有样本 · 单次采样 · 待改 p50/p90</span><span class="tg a">部分</span></div>
+        <div class="pipe"><span class="st n"></span><span class="nm">图片 / AI</span><span class="ds">未接入详情图、pHash、视觉标签</span><span class="tg n">未接入</span></div>
+        <div class="pipe"><span class="st g"></span><span class="nm">通知</span><span class="ds">飞书即时 + 09:00 日报 · 23-08 静默</span><span class="tg g">正常</span></div>
+      </div>
+      <div class="cd">
+        <h3>高德预算 <span class="hn">本月 876 / 5000（估算）</span></h3>
+        <div class="pr">
+          <div class="rw"><div class="hd"><span>本月累计</span><span>17.5%</span></div><div class="bar"><i class="am" style="width:17.5%"></i></div></div>
+          <div class="rw"><div class="hd"><span>本次富化（176 条新通勤 + 133 小区 POI）</span><span>约 850</span></div><div class="bar"><i class="rd" style="width:70%"></i></div></div>
+          <div class="rw"><div class="hd"><span>剩余可用</span><span>约 4124</span></div><div class="bar"><i class="gn" style="width:82.5%"></i></div></div>
+        </div>
+        <div class="flexrow" style="margin-top:13px">
+          <span class="tg a">单会话上限 15 次</span><span class="tg b">缓存 7 天</span><span class="tg n">只算候选</span>
+        </div>
+        <div class="dm" style="font-size:11px;margin-top:10px;line-height:1.7">换公司地址会重算通勤，但地理编码永久缓存、POI 30 天缓存；新设计用“公司→站点”聚合，地址变更只重算 40–80 次。</div>
+      </div>
+    </div>
+
+    <div class="gr g2" style="margin-top:14px">
+      <div class="cd">
+        <h3>最近运行 <span class="hn"><button class="btn s gh" onclick="nav('logs')">全部日志</button></span></h3>
+        <table><thead><tr><th>Run</th><th>类型</th><th>状态</th><th>抓取 / 新增</th><th>评分</th><th>时间</th></tr></thead><tbody id="runRows"></tbody></table>
+      </div>
+      <div class="cd">
+        <h3>候选漏斗 <span class="hn">最近一次 5 号线全量</span></h3>
+        <div class="flow" style="gap:8px;margin-bottom:12px">
+          <span class="bx">列表 900</span><span class="ar">→</span><span class="bx">硬过滤 672</span><span class="ar">→</span><span class="bx">有坐标 254</span><span class="ar">→</span><span class="bx on">有通勤 248</span><span class="ar">→</span><span class="bx off">图片/AI 0</span>
+        </div>
+        <div class="pr">
+          <div class="rw"><div class="hd"><span>有坐标小区</span><span>254 / 498</span></div><div class="bar"><i style="width:51%"></i></div></div>
+          <div class="rw"><div class="hd"><span>有通勤样本</span><span>248 / 498</span></div><div class="bar"><i style="width:50%"></i></div></div>
+          <div class="rw"><div class="hd"><span>有详情图</span><span>0 / 900</span></div><div class="bar"><i class="rd" style="width:0%"></i></div></div>
+          <div class="rw"><div class="hd"><span>外卖实测</span><span>5 条（夜宵）</span></div><div class="bar"><i class="am" style="width:8%"></i></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 房源库 ================= -->
+  <div class="pg" id="p-listings">
+    <div class="cd">
+      <div class="flexrow" style="margin-bottom:12px">
+        <input type="search" id="q" placeholder="搜索小区 / 标题" style="width:230px" oninput="renderListings()">
+        <select id="fDistrict" onchange="renderListings()"><option value="">全部区域</option><option>罗湖区</option><option>龙岗区</option><option>龙华区</option><option>福田区</option><option>南山区</option><option>宝安区</option></select>
+        <select id="fScore" onchange="renderListings()"><option value="0">全部评分</option><option value="75">≥75</option><option value="80">≥80</option><option value="85">≥85</option></select>
+        <select id="fRent" onchange="renderListings()"><option value="0">全部租金</option><option value="3000">≤3000</option><option value="4000">≤4000</option><option value="5000">≤5000</option></select>
+        <label class="chip" style="cursor:pointer"><input type="checkbox" id="fLine" checked onchange="renderListings()" style="margin:0"> 仅 5 号线</label>
+        <span class="spacer"></span>
+        <span class="dm" id="listCount">—</span>
+        <button class="btn s" onclick="toast('导出 CSV（演示）')">导出</button>
+      </div>
+      <div style="overflow:auto">
+        <table><thead><tr><th>房源</th><th>区域</th><th>户型 / 面积</th><th>月租</th><th>评分</th><th>通勤</th><th>POI 餐饮/日常</th><th>状态</th><th></th></tr></thead><tbody id="listingRows"></tbody></table>
+      </div>
+      <div class="pgnt"><span id="pgInfo">—</span><span class="pg2 on">1</span><span class="pg2">2</span><span class="pg2">3</span></div>
+    </div>
+  </div>
+
+  <!-- ================= 小区与通勤 ================= -->
+  <div class="pg" id="p-commute">
+    <div class="gr g4" style="margin-bottom:14px">
+      <div class="kp"><div class="l">小区总数</div><div class="v" id="cComm">498</div><div class="d">5 号线任务下</div></div>
+      <div class="kp g"><div class="l">有坐标</div><div class="v" id="cGeo">254</div><div class="d">地理编码永久缓存</div></div>
+      <div class="kp a"><div class="l">有通勤样本</div><div class="v" id="cSamples">248</div><div class="d">单次采样，待 p50/p90</div></div>
+      <div class="kp r"><div class="l">无坐标</div><div class="v" id="cNoGeo">244</div><div class="d">不参与通勤评分</div></div>
+    </div>
+    <div class="cd">
+      <h3>小区数据质量 <span class="hn">按房源数排序 · 前 20</span></h3>
+      <div style="overflow:auto">
+        <table><thead><tr><th>小区</th><th>区域</th><th>房源</th><th>坐标</th><th>通勤</th><th>样本</th><th>POI 餐饮/日常/夜宵</th><th>状态</th></tr></thead><tbody id="commRows"></tbody></table>
+      </div>
+      <div class="dm" style="font-size:11px;margin-top:10px;line-height:1.7">每次通勤 = 1 次高德 transit；地理编码 1–2 次、POI 3 次（仅首次或 30 天过期）。当前关键问题：全量跑而不是只跑候选。另：高德 around 在密集区餐饮 count 封顶 600，密度区分度不足。</div>
+    </div>
+  </div>
+
+  <!-- ================= 图片 / AI ================= -->
+  <div class="pg" id="p-images">
+    <div class="banner" style="background:var(--acbg);border-color:var(--acbd);color:#a9c7ff">
+      <div class="bi"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4c9aff" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div>
+      <div><b>图片 / AI 尚未接入。</b>当前只有列表页封面 URL；没有 images 表、没有下载、没有 pHash、没有视觉标签。下一条管线只对候选房源运行。</div>
+    </div>
+    <div class="gr g2">
+      <div class="cd">
+        <h3>计划管线</h3>
+        <div class="flow" style="gap:8px">
+          <span class="bx">列表封面</span><span class="ar">→</span><span class="bx off">候选详情 3–6 图</span><span class="ar">→</span><span class="bx off">本地存储 + pHash</span><span class="ar">→</span><span class="bx off">Qwen-VL 标签</span><span class="ar">→</span><span class="bx off">假房源信号</span>
+        </div>
+        <div class="dm" style="font-size:11.5px;margin-top:12px;line-height:1.8">标签：实拍/样板间、装修程度、朝向采光、可见水渍/霉斑、图文不符。每条标签存置信度 + 证据图；假房源需 ≥2 个信号（pHash 复用 / 价格异常 / 中介话术 / 图文不符）。</div>
+        <div class="flexrow" style="margin-top:12px"><span class="tg n">仅候选</span><span class="tg n">魔搭免费额度</span><span class="tg n">不占高德</span><span class="tg n">图文不符 ≥2 信号</span></div>
+      </div>
+      <div class="cd">
+        <h3>队列 <span class="hn">0 待处理 / 0 已分析</span></h3>
+        <div class="empty">尚未接入。接入后这里会显示候选房源的抓图、pHash 和 AI 标签进度。</div>
+        <div class="flexrow" style="justify-content:center"><button class="btn" disabled>抓取候选详情图</button><button class="btn" disabled>运行视觉分析</button></div>
+      </div>
+    </div>
+    <div class="cd" style="margin-top:14px">
+      <h3>设计预览：单套图片分析</h3>
+      <div class="gr g3">
+        <div class="cd" style="padding:12px"><div class="dm" style="font-size:11px">实拍概率</div><div style="font-size:22px;font-weight:650;color:var(--gn)">82%</div><div class="dm" style="font-size:11px">图 2 / 图 4 为手机实拍</div></div>
+        <div class="cd" style="padding:12px"><div class="dm" style="font-size:11px">装修 / 朝向</div><div style="font-size:18px;font-weight:650">精装 · 南向</div><div class="dm" style="font-size:11px">采光良好；与标题一致 0.86</div></div>
+        <div class="cd" style="padding:12px"><div class="dm" style="font-size:11px">可见问题</div><div style="font-size:18px;font-weight:650;color:var(--am)">1 处水渍</div><div class="dm" style="font-size:11px">图 2 墙面右下角；置信度 0.71</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 采集任务 ================= -->
+  <div class="pg" id="p-tasks">
+    <div class="gr g2">
+      <div class="cd">
+        <h3>任务 1 · 贝壳 5 号线 <span class="hn"><span class="tg r">暂停</span></span></h3>
+        <div class="fld"><label>名称</label><input type="text" value="贝壳-深圳5号线快循环" readonly></div>
+        <div class="fld"><label>过滤条件</label><input type="text" value='{"line":"li110460696","min_area":30,"slow_pages":30}' readonly></div>
+        <div class="gr g2" style="gap:10px">
+          <div class="fld"><label>快扫</label><input type="text" value="每 30 分钟 · 1 页" readonly></div>
+          <div class="fld"><label>慢扫</label><input type="text" value="每 360 分钟 · 30 页" readonly></div>
+        </div>
+        <div class="flexrow"><span class="tg r">人机验证未通过</span><span class="tg n">enabled=false</span><span class="tg n">scope=line:li110460696</span></div>
+        <div class="flexrow" style="margin-top:13px"><button class="btn" disabled>立即运行</button><button class="btn" disabled>启用任务</button><button class="btn gh" onclick="toast('需先在 Chrome 过验证码')">处理验证码</button></div>
+      </div>
+      <div class="cd">
+        <h3>任务 2 · 链家 <span class="hn"><span class="tg n">未启用</span></span></h3>
+        <div class="fld"><label>名称</label><input type="text" value="链家-深圳全量慢循环" readonly></div>
+        <div class="fld"><label>说明</label><textarea rows="3" readonly>链家 robots 全站 Disallow，不自动抓；仅保留手动链接。原计划书里的“零登录链家列表”与现实 robots 冲突，当前以贝壳登录态为准。</textarea></div>
+        <div class="flexrow"><span class="tg n">robots 禁止</span><span class="tg n">手动模式</span></div>
+      </div>
+    </div>
+    <div class="cd" style="margin-top:14px">
+      <h3>采集器行为 <span class="hn">已优化</span></h3>
+      <div class="gr g3">
+        <div><div class="dm" style="font-size:11px">标签页</div><div style="font-size:14px;font-weight:600;margin-top:3px">整轮复用同一个</div><div class="dm" style="font-size:11px">优先复用已开的贝壳页，避免每页开关</div></div>
+        <div><div class="dm" style="font-size:11px">页面间隔</div><div style="font-size:14px;font-weight:600;margin-top:3px">6–12 秒随机</div><div class="dm" style="font-size:11px">30 页约 3–6 分钟</div></div>
+        <div><div class="dm" style="font-size:11px">验证码</div><div style="font-size:14px;font-weight:600;margin-top:3px">检测即停</div><div class="dm" style="font-size:11px">自动 enabled=false，不反复撞</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 预算与设置 ================= -->
+  <div class="pg" id="p-budget">
+    <div class="gr g2">
+      <div class="cd">
+        <h3>高德预算</h3>
+        <div class="fld"><label>月上限</label><input type="text" value="5000 次/月"></div>
+        <div class="fld"><label>单会话上限</label><input type="text" value="15 次"></div>
+        <div class="fld"><label>本月已用（估算）</label><input type="text" value="876 次"></div>
+        <div class="pr"><div class="rw"><div class="hd"><span>已用 17.5%</span><span>剩余约 4124</span></div><div class="bar"><i class="am" style="width:17.5%"></i></div></div></div>
+        <div class="fld" style="margin-top:14px"><label>策略</label><div class="flexrow"><span class="tg g">只算候选</span><span class="tg g">缓存 7 天</span><span class="tg a">地址变更只重算公司→站点</span></div></div>
+      </div>
+      <div class="cd">
+        <h3>通知与静默</h3>
+        <div class="flexrow" style="padding:9px 0;border-bottom:1px solid var(--sf3)"><span>飞书即时提醒</span><span class="spacer"></span><div class="sw on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="flexrow" style="padding:9px 0;border-bottom:1px solid var(--sf3)"><span>09:00 日报</span><span class="spacer"></span><div class="sw on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="flexrow" style="padding:9px 0;border-bottom:1px solid var(--sf3)"><span>夜间静默 23:00–08:00</span><span class="spacer"></span><div class="sw on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="flexrow" style="padding:9px 0"><span>采集暂停告警</span><span class="spacer"></span><div class="sw on" onclick="this.classList.toggle('on')"></div></div>
+        <div class="fld" style="margin-top:14px"><label>飞书状态</label><input type="text" value="已配置 · 最近发送 09:00 日报" readonly></div>
+        <button class="btn p" onclick="toast('设置已保存（演示）')">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 日志 ================= -->
+  <div class="pg" id="p-logs">
+    <div class="cd">
+      <h3>运行记录 <span class="hn">最近 10 次</span></h3>
+      <table><thead><tr><th>Run</th><th>状态</th><th>抓取</th><th>新增</th><th>评分</th><th>耗时</th><th>错误</th></tr></thead><tbody id="logRows"></tbody></table>
+    </div>
+    <div class="cd" style="margin-top:14px">
+      <h3>关键事件</h3>
+      <div class="lg">
+        <div class="it er"><div class="dt">!</div><div class="ct"><div class="tt"><b>采集暂停：人机验证</b><span class="tm">10-29 16:22</span></div><div class="ds">贝壳返回验证页；任务 1 已置 enabled=false；worker/scheduler 已停止。需在 Windows Chrome 手动通过。</div></div></div>
+        <div class="it ok"><div class="dt">✓</div><div class="ct"><div class="tt"><b>5 号线全量完成</b><span class="tm">10-29 16:19</span></div><div class="ds">30 页 / 900 条 / 新增 836 / 评分 505；scope=line:li110460696。</div></div></div>
+        <div class="it"><div class="dt">·</div><div class="ct"><div class="tt"><b>高德富化中途停止</b><span class="tm">10-29 16:22</span></div><div class="ds">已处理约 248 个小区，新增 176 条通勤 + 133 个小区 POI；为避免额度耗尽主动停止。</div></div></div>
+        <div class="it ok"><div class="dt">✓</div><div class="ct"><div class="tt"><b>评分重算</b><span class="tm">10-29 16:26</span></div><div class="ds">1130 套评估，672 套有效；最高 92，中位 55.5。</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+</div>
+</div>
+
+<div class="mask" id="mask" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="mh"><h3 id="mTitle">房源详情</h3><button class="btn s gh" onclick="closeModal()">关闭</button></div>
+    <div class="mb" id="mBody"></div>
+    <div class="mf"><a class="btn" id="mLink" target="_blank" rel="noopener">打开原文</a><button class="btn" onclick="toast('已加入候选池（演示）')">加入候选</button><button class="btn p" onclick="toast('已触发按需分析（演示）')">按需分析</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const DATA = {
+ "stats": {
+  "listings": 1130,
+  "line5": 900,
+  "scored": 672,
+  "ge75": 34,
+  "avg_score": 55.0,
+  "median_score": 55.5,
+  "max_score": 92,
+  "communities": 498,
+  "geocoded": 254,
+  "commute_samples": 285,
+  "commute_communities": 248,
+  "poi_cache": 248,
+  "probes": 5
+ },
+ "listings": [
+  {
+   "id": 450,
+   "title": "整租·海鹰大厦 1室1厅 南",
+   "community_name": "海鹰大厦",
+   "district": "罗湖区",
+   "layout": "1室1厅1卫",
+   "area": 38.0,
+   "rent": 1900,
+   "score": 92,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 58%（中位 ¥4500）",
+    "commute": "公共交通 16 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向 / 中楼层 / 38㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 252 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_tHWjzoIgR.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226311442364104704.html",
+   "first_seen_at": "2026-10-29T08:18:28.604628+00:00",
+   "commute_min": 16.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 252,
+   "nightlife_count": 28
+  },
+  {
+   "id": 627,
+   "title": "整租·龙园创展大厦 1室1厅 北",
+   "community_name": "龙园创展大厦",
+   "district": "罗湖区",
+   "layout": "1室1厅1卫",
+   "area": 40.32,
+   "rent": 3500,
+   "score": 88,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 22%（中位 ¥4500）",
+    "commute": "公共交通 29 分钟（含地铁，单次采样）",
+    "condition": "精装 / 40㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 348 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/lease-image/house/052283f0ab799e6fa0200fe760997f78.jpeg.250x182.jpg",
+   "tags": [
+    "自营",
+    "新上",
+    "近地铁",
+    "精装",
+    "押一付一",
+    "随时看房"
+   ],
+   "agent_type": "apartment",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2013174617136431104.html",
+   "first_seen_at": "2026-10-29T08:18:55.915553+00:00",
+   "commute_min": 29.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 348,
+   "nightlife_count": 23
+  },
+  {
+   "id": 405,
+   "title": "整租·罗湖大厦 2室1厅 东南",
+   "community_name": "罗湖大厦",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 46.46,
+   "rent": 4500,
+   "score": 86,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 20%（中位 ¥5600）",
+    "commute": "公共交通 34 分钟（含地铁，单次采样）",
+    "condition": "东南向 / 中楼层 / 46㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 364 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_4TcsUsc23.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226353238532161536.html",
+   "first_seen_at": "2026-10-29T08:18:24.526139+00:00",
+   "commute_min": 34.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 364,
+   "nightlife_count": 37
+  },
+  {
+   "id": 928,
+   "title": "整租·东乐大厦 3室2厅 南",
+   "community_name": "东乐大厦",
+   "district": "罗湖区",
+   "layout": "3室2厅0卫",
+   "area": 110.0,
+   "rent": 6600,
+   "score": 85,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 25%（中位 ¥8800）",
+    "commute": "公共交通 37 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向 / 中楼层",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 525 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_V3BOVWaaJ.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2224475114869620736.html",
+   "first_seen_at": "2026-10-29T08:19:09.831886+00:00",
+   "commute_min": 37.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 525,
+   "nightlife_count": 34
+  },
+  {
+   "id": 420,
+   "title": "整租·德兴大厦 2室1厅 东北",
+   "community_name": "德兴大厦",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 38.1,
+   "rent": 4000,
+   "score": 83,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 29%（中位 ¥5600）",
+    "commute": "公共交通 36 分钟（含地铁，单次采样）",
+    "condition": "中楼层 / 38㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 298 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc0_amwJFt7WB_1.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "自营",
+    "新上",
+    "近地铁",
+    "押一付一",
+    "随时看房",
+    "首次出租"
+   ],
+   "agent_type": "apartment",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226629254420889600.html",
+   "first_seen_at": "2026-10-29T08:18:25.899121+00:00",
+   "commute_min": 36.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 298,
+   "nightlife_count": 34
+  },
+  {
+   "id": 945,
+   "title": "整租·鸿基大厦 2室1厅 东",
+   "community_name": "鸿基大厦",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 50.0,
+   "rent": 4500,
+   "score": 83,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 20%（中位 ¥5600）",
+    "commute": "公共交通 36 分钟（含地铁，单次采样）",
+    "condition": "精装 / 50㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 536 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_VAIIvRVIi.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2219312058741030912.html",
+   "first_seen_at": "2026-10-29T08:19:11.196074+00:00",
+   "commute_min": 36.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 536,
+   "nightlife_count": 37
+  },
+  {
+   "id": 425,
+   "title": "整租·外贸集团大厦 3室1厅 东南",
+   "community_name": "外贸集团大厦",
+   "district": "罗湖区",
+   "layout": "3室1厅1卫",
+   "area": 107.0,
+   "rent": 5000,
+   "score": 83,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 25%（中位 ¥6650）",
+    "commute": "公共交通 36 分钟（含地铁，单次采样）",
+    "condition": "东南向 / 中楼层",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 478 家（高德）"
+   },
+   "image_url": null,
+   "tags": [
+    "新上",
+    "近地铁"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2225917157823217664.html",
+   "first_seen_at": "2026-10-29T08:18:25.899121+00:00",
+   "commute_min": 36.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 478,
+   "nightlife_count": 29
+  },
+  {
+   "id": 767,
+   "title": "整租·福德花园 1室1厅 东南",
+   "community_name": "福德花园",
+   "district": "罗湖区",
+   "layout": "1室1厅1卫",
+   "area": 43.0,
+   "rent": 3700,
+   "score": 83,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 18%（中位 ¥4500）",
+    "commute": "公共交通 38 分钟（含地铁，单次采样）",
+    "condition": "精装 / 东南向 / 高楼层 / 43㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 416 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_7tUWy3N80.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2212425641238724608.html",
+   "first_seen_at": "2026-10-29T08:19:02.862961+00:00",
+   "commute_min": 38.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 416,
+   "nightlife_count": 29
+  },
+  {
+   "id": 585,
+   "title": "整租·城市天地广场 2室1厅 南",
+   "community_name": "城市天地广场",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 60.05,
+   "rent": 4600,
+   "score": 82,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同小区同户型中位价低 17%（中位 ¥5550）",
+    "commute": "公共交通 39 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向 / 中楼层 / 60㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 291 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_sYHK4eOa8.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2225881666600042496.html",
+   "first_seen_at": "2026-10-29T08:18:54.534162+00:00",
+   "commute_min": 39.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 291,
+   "nightlife_count": 29
+  },
+  {
+   "id": 460,
+   "title": "整租·福德花园 1室1厅 东",
+   "community_name": "福德花园",
+   "district": "罗湖区",
+   "layout": "1室1厅1卫",
+   "area": 39.0,
+   "rent": 3500,
+   "score": 82,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 22%（中位 ¥4500）",
+    "commute": "公共交通 38 分钟（含地铁，单次采样）",
+    "condition": "精装 / 39㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 416 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_t1PTdgUuv.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226337537926889472.html",
+   "first_seen_at": "2026-10-29T08:18:28.604628+00:00",
+   "commute_min": 38.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 416,
+   "nightlife_count": 29
+  },
+  {
+   "id": 858,
+   "title": "整租·凤凰路188号大院 3室2厅 南",
+   "community_name": "凤凰路188号大院",
+   "district": "罗湖区",
+   "layout": "3室2厅2卫",
+   "area": 93.1,
+   "rent": 5500,
+   "score": 82,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 24%（中位 ¥7200）",
+    "commute": "公共交通 41 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向 / 中楼层 / 93㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 456 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_QkqS7vpSz.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装",
+    "双卫生间",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2224817315675897856.html",
+   "first_seen_at": "2026-10-29T08:19:07.111440+00:00",
+   "commute_min": 41.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 456,
+   "nightlife_count": 28
+  },
+  {
+   "id": 816,
+   "title": "整租·友谊大厦 2室1厅 南",
+   "community_name": "友谊大厦",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 49.26,
+   "rent": 4900,
+   "score": 80,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 12%（中位 ¥5600）",
+    "commute": "公共交通 34 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向 / 49㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 443 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/6c147a0097a2a512fdfafaeadac7555b-015.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2220892863237980160.html",
+   "first_seen_at": "2026-10-29T08:19:05.740727+00:00",
+   "commute_min": 34.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 443,
+   "nightlife_count": 40
+  },
+  {
+   "id": 755,
+   "title": "整租·深发花园 3室2厅 东北",
+   "community_name": "深发花园",
+   "district": "罗湖区",
+   "layout": "3室2厅2卫",
+   "area": 86.0,
+   "rent": 6000,
+   "score": 79,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 17%（中位 ¥7200）",
+    "commute": "公共交通 40 分钟（含地铁，单次采样）",
+    "condition": "精装 / 中楼层 / 86㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 310 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_BiSfPe0bZ.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装",
+    "双卫生间"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2200949914295336960.html",
+   "first_seen_at": "2026-10-29T08:19:02.862961+00:00",
+   "commute_min": 40.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 310,
+   "nightlife_count": 25
+  },
+  {
+   "id": 823,
+   "title": "整租·华裕花园 2室1厅 北",
+   "community_name": "华裕花园",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 50.35,
+   "rent": 3900,
+   "score": 79,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 30%（中位 ¥5600）",
+    "commute": "公共交通 39 分钟（含地铁，单次采样）",
+    "condition": "高楼层 / 50㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 415 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_bMuTnMhWW.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2224770640773120000.html",
+   "first_seen_at": "2026-10-29T08:19:05.740727+00:00",
+   "commute_min": 39.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 415,
+   "nightlife_count": 27
+  },
+  {
+   "id": 242,
+   "title": "整租·远洋新天地家园 2室1厅 南",
+   "community_name": "远洋新天地家园",
+   "district": "龙岗区",
+   "layout": "2室1厅1卫",
+   "area": 36.75,
+   "rent": 2500,
+   "score": 78,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 28%（中位 ¥3450）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 南向 / 中楼层 / 37㎡",
+    "freshness": "上架 17 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 385 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_pAoip7KuS.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "suspect",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226188391970504704.html",
+   "first_seen_at": "2026-10-28T15:38:28.379437+00:00",
+   "commute_min": 105.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 385,
+   "nightlife_count": 14
+  },
+  {
+   "id": 226,
+   "title": "整租·华侨城四海锦园 2室1厅 东南",
+   "community_name": "华侨城四海锦园",
+   "district": "龙岗区",
+   "layout": "2室1厅1卫",
+   "area": 56.0,
+   "rent": 2600,
+   "score": 78,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 25%（中位 ¥3450）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 东南向 / 中楼层 / 56㎡",
+    "freshness": "上架 17 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 211 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_eAxxZDXvY.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "近地铁",
+    "精装",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "suspect",
+   "url": "https://sz.zu.ke.com/zufang/SZ2225593638316933120.html",
+   "first_seen_at": "2026-10-28T15:38:26.990188+00:00",
+   "commute_min": 71.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 211,
+   "nightlife_count": 3
+  },
+  {
+   "id": 891,
+   "title": "整租·峰景台大厦 3室2厅 南",
+   "community_name": "峰景台大厦",
+   "district": "罗湖区",
+   "layout": "3室2厅2卫",
+   "area": 107.26,
+   "rent": 6300,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 12%（中位 ¥7200）",
+    "commute": "公共交通 37 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 256 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/13bd12d5-0f06-4e68-957b-823067ed989f.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "近地铁",
+    "精装",
+    "双卫生间"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2219728761010520064.html",
+   "first_seen_at": "2026-10-29T08:19:08.460509+00:00",
+   "commute_min": 37.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 256,
+   "nightlife_count": 19
+  },
+  {
+   "id": 99,
+   "title": "整租·珑城原点广场 1室1厅 南",
+   "community_name": "珑城原点广场",
+   "district": "龙岗区",
+   "layout": "1室1厅1卫",
+   "area": 33.63,
+   "rent": 2100,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 25%（中位 ¥2800）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 南向 / 高楼层 / 34㎡",
+    "freshness": "上架 21 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 257 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/lease-image/house/0df139aafc4ffda04a81478fb5e81b3d.jpeg.250x182.jpg",
+   "tags": [
+    "自营",
+    "新上",
+    "近地铁",
+    "精装",
+    "押一付一",
+    "随时看房",
+    "首次出租"
+   ],
+   "agent_type": "apartment",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2218646967079141376.html",
+   "first_seen_at": "2026-10-28T11:09:21.968080+00:00",
+   "commute_min": 92.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 257,
+   "nightlife_count": 26
+  },
+  {
+   "id": 85,
+   "title": "整租·百合盛世二期 3室2厅 东南",
+   "community_name": "百合盛世二期",
+   "district": "龙岗区",
+   "layout": "3室2厅1卫",
+   "area": 81.79,
+   "rent": 3500,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 26%（中位 ¥4700）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 东南向 / 高楼层 / 82㎡",
+    "freshness": "上架 21 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 315 家 / 便利店超市菜场 141 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_PYVED4Tk2.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226667112208793600.html",
+   "first_seen_at": "2026-10-28T11:09:21.968080+00:00",
+   "commute_min": 111.0,
+   "samples": 1,
+   "dining_count": 315,
+   "daily_count": 141,
+   "nightlife_count": 2
+  },
+  {
+   "id": 684,
+   "title": "整租·城市天地广场 2室1厅 南",
+   "community_name": "城市天地广场",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 57.0,
+   "rent": 4900,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同小区同户型中位价低 12%（中位 ¥5550）",
+    "commute": "公共交通 39 分钟（含地铁，单次采样）",
+    "condition": "精装 / 南向 / 高楼层 / 57㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 291 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_k18pJCxyj.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2225267734646620160.html",
+   "first_seen_at": "2026-10-29T08:18:58.727514+00:00",
+   "commute_min": 39.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 291,
+   "nightlife_count": 29
+  },
+  {
+   "id": 293,
+   "title": "整租·京基御景半山 3室2厅 东南",
+   "community_name": "京基御景半山",
+   "district": "龙岗区",
+   "layout": "3室2厅2卫",
+   "area": 97.0,
+   "rent": 3500,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 36%（中位 ¥5500）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 东南向 / 中楼层 / 97㎡",
+    "freshness": "上架 8 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 161 家 / 便利店超市菜场 72 家（高德）"
+   },
+   "image_url": null,
+   "tags": [
+    "业主自荐",
+    "新上",
+    "精装",
+    "双卫生间"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226198886106529792.html",
+   "first_seen_at": "2026-10-29T00:35:44.590792+00:00",
+   "commute_min": 93.0,
+   "samples": 1,
+   "dining_count": 161,
+   "daily_count": 72,
+   "nightlife_count": 0
+  },
+  {
+   "id": 287,
+   "title": "整租·中兆花园 2室2厅 南",
+   "community_name": "中兆花园",
+   "district": "龙岗区",
+   "layout": "2室2厅1卫",
+   "area": 65.0,
+   "rent": 3200,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 19%（中位 ¥3950）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 南向 / 中楼层 / 65㎡",
+    "freshness": "上架 8 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 290 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_ZbNZxmZ9f.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "新上",
+    "近地铁",
+    "精装",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2223698251494719488.html",
+   "first_seen_at": "2026-10-29T00:35:43.250005+00:00",
+   "commute_min": 60.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 290,
+   "nightlife_count": 4
+  },
+  {
+   "id": 320,
+   "title": "整租·珑禧 3室2厅 西南",
+   "community_name": "珑禧",
+   "district": "龙岗区",
+   "layout": "3室2厅2卫",
+   "area": 89.22,
+   "rent": 3500,
+   "score": 77,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 36%（中位 ¥5500）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 中楼层 / 89㎡",
+    "freshness": "新上架 5 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 279 家 / 便利店超市菜场 165 家（高德）"
+   },
+   "image_url": null,
+   "tags": [
+    "新上",
+    "精装",
+    "双卫生间"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226922089846145024.html",
+   "first_seen_at": "2026-10-29T03:15:44.837097+00:00",
+   "commute_min": 106.0,
+   "samples": 1,
+   "dining_count": 279,
+   "daily_count": 165,
+   "nightlife_count": 3
+  },
+  {
+   "id": 360,
+   "title": "整租·和昌拾里花都 4室2厅 东南",
+   "community_name": "和昌拾里花都",
+   "district": "龙岗区",
+   "layout": "4室2厅2卫",
+   "area": 123.76,
+   "rent": 4600,
+   "score": 76,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 30%（中位 ¥6600）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 东南向",
+    "freshness": "新上架 1 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 448 家（高德）"
+   },
+   "image_url": null,
+   "tags": [
+    "新上",
+    "精装",
+    "双卫生间"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2226989839473967104.html",
+   "first_seen_at": "2026-10-29T07:47:57.563044+00:00",
+   "commute_min": 88.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 448,
+   "nightlife_count": 23
+  },
+  {
+   "id": 235,
+   "title": "整租·和昌拾里花都 1室0厅 东南",
+   "community_name": "和昌拾里花都",
+   "district": "龙岗区",
+   "layout": "1室0厅1卫",
+   "area": 34.0,
+   "rent": 1500,
+   "score": 76,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 45%（中位 ¥2715）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 东南向 / 34㎡",
+    "freshness": "上架 17 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 448 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/lease-image/house/b4cae693c6ed0ba7eaecf1eec272f454.jpeg.250x182.jpg",
+   "tags": [
+    "自营",
+    "新上",
+    "近地铁",
+    "精装",
+    "押一付一",
+    "随时看房"
+   ],
+   "agent_type": "apartment",
+   "status": "suspect",
+   "url": "https://sz.zu.ke.com/zufang/SZ2146667278706409472.html",
+   "first_seen_at": "2026-10-28T15:38:28.379437+00:00",
+   "commute_min": 88.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 448,
+   "nightlife_count": 23
+  },
+  {
+   "id": 1025,
+   "title": "整租·东湖丽苑 2室1厅 东南",
+   "community_name": "东湖丽苑",
+   "district": "罗湖区",
+   "layout": "2室1厅1卫",
+   "area": 60.41,
+   "rent": 4100,
+   "score": 76,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 27%（中位 ¥5600）",
+    "commute": "公共交通 50 分钟（含地铁，单次采样）",
+    "condition": "精装 / 东南向 / 中楼层 / 60㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 235 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/8492fc11-16ed-455f-85ef-270e9d950aba.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "近地铁",
+    "精装"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2176732991009587200.html",
+   "first_seen_at": "2026-10-29T08:19:15.302860+00:00",
+   "commute_min": 50.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 235,
+   "nightlife_count": 11
+  },
+  {
+   "id": 799,
+   "title": "整租·东门金座 1室1厅 西北",
+   "community_name": "东门金座",
+   "district": "罗湖区",
+   "layout": "1室1厅1卫",
+   "area": 37.5,
+   "rent": 3360,
+   "score": 76,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 25%（中位 ¥4500）",
+    "commute": "公共交通 44 分钟（含地铁，单次采样）",
+    "condition": "中楼层 / 38㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 214 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc0_ebIBotFyP.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "自营",
+    "新上",
+    "近地铁",
+    "押一付一",
+    "随时看房"
+   ],
+   "agent_type": "apartment",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2096224256953155584.html",
+   "first_seen_at": "2026-10-29T08:19:04.332269+00:00",
+   "commute_min": 44.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 214,
+   "nightlife_count": 11
+  },
+  {
+   "id": 75,
+   "title": "整租·紫和嘉园 3室2厅 东南",
+   "community_name": "紫和嘉园",
+   "district": "龙岗区",
+   "layout": "3室2厅2卫",
+   "area": 89.0,
+   "rent": 3800,
+   "score": 76,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 31%（中位 ¥5500）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 东南向 / 89㎡",
+    "freshness": "上架 21 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 343 家 / 便利店超市菜场 210 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc1_XfxLGivb5.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "业主自荐",
+    "新上",
+    "精装",
+    "双卫生间",
+    "随时看房"
+   ],
+   "agent_type": "unknown",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2220576399628959744.html",
+   "first_seen_at": "2026-10-28T11:09:21.968080+00:00",
+   "commute_min": 116.0,
+   "samples": 1,
+   "dining_count": 343,
+   "daily_count": 210,
+   "nightlife_count": 3
+  },
+  {
+   "id": 166,
+   "title": "整租·茂业城 1室1厅 东北",
+   "community_name": "茂业城",
+   "district": "龙岗区",
+   "layout": "1室1厅1卫",
+   "area": 45.7,
+   "rent": 2200,
+   "score": 75,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 21%（中位 ¥2800）",
+    "commute": "通勤样本缺失（估算）",
+    "condition": "精装 / 中楼层 / 46㎡",
+    "freshness": "上架 17 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 576 家 / 便利店超市菜场 184 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/110000-inspection/pc0_bQp0npDey.jpg!m_fill,w_250,h_182,l_fbk,o_auto",
+   "tags": [
+    "自营",
+    "新上",
+    "近地铁",
+    "精装",
+    "押一付一",
+    "随时看房"
+   ],
+   "agent_type": "apartment",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2052068324321263616.html",
+   "first_seen_at": "2026-10-28T15:34:25.619594+00:00",
+   "commute_min": 61.0,
+   "samples": 1,
+   "dining_count": 576,
+   "daily_count": 184,
+   "nightlife_count": 10
+  },
+  {
+   "id": 734,
+   "title": "整租·新银座华庭 3室2厅 东南",
+   "community_name": "新银座华庭",
+   "district": "罗湖区",
+   "layout": "3室2厅1卫",
+   "area": 78.92,
+   "rent": 5500,
+   "score": 75,
+   "score_reasons": {
+    "risk": [],
+    "price": "比同区同户型中位价低 8%（中位 ¥6000）",
+    "commute": "公共交通 37 分钟（含地铁，单次采样）",
+    "condition": "精装 / 东南向 / 高楼层 / 79㎡",
+    "freshness": "新上架 0 小时",
+    "reputation": "暂无口碑数据",
+    "convenience": "1km 餐饮 600 家 / 便利店超市菜场 342 家（高德）"
+   },
+   "image_url": "https://ke-image.ljcdn.com/lease-image/house/1c457a7a-6b01-410e-96c0-48a75cee8250.jpg.250x182.jpg",
+   "tags": [
+    "自营",
+    "新上",
+    "月租",
+    "近地铁",
+    "精装",
+    "押一付一",
+    "随时看房"
+   ],
+   "agent_type": "apartment",
+   "status": "active",
+   "url": "https://sz.zu.ke.com/zufang/SZ2018647111687471104.html",
+   "first_seen_at": "2026-10-29T08:19:01.480485+00:00",
+   "commute_min": 37.0,
+   "samples": 1,
+   "dining_count": 600,
+   "daily_count": 342,
+   "nightlife_count": 33
+  }
+ ],
+ "communities": [
+  {
+   "id": 41,
+   "name": "微棠青年公寓",
+   "district": null,
+   "lng": null,
+   "lat": null,
+   "listings": 85,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 208,
+   "name": "湾区公寓",
+   "district": null,
+   "lng": null,
+   "lat": null,
+   "listings": 63,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 256,
+   "name": "星窝青年公寓",
+   "district": null,
+   "lng": null,
+   "lat": null,
+   "listings": 37,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 233,
+   "name": "无忧公寓·",
+   "district": null,
+   "lng": 114.396553,
+   "lat": 22.712337,
+   "listings": 32,
+   "dining_count": 319,
+   "daily_count": 105,
+   "nightlife_count": 2,
+   "commute_min": 117.0,
+   "samples": 1
+  },
+  {
+   "id": 72,
+   "name": "启航寓",
+   "district": null,
+   "lng": 114.078472,
+   "lat": 22.651922,
+   "listings": 27,
+   "dining_count": 600,
+   "daily_count": 208,
+   "nightlife_count": 2,
+   "commute_min": 55.0,
+   "samples": 1
+  },
+  {
+   "id": 76,
+   "name": "住我家公寓·",
+   "district": null,
+   "lng": 114.123621,
+   "lat": 22.601565,
+   "listings": 25,
+   "dining_count": 600,
+   "daily_count": 413,
+   "nightlife_count": 14,
+   "commute_min": 47.0,
+   "samples": 1
+  },
+  {
+   "id": 144,
+   "name": "佳兆业大都汇",
+   "district": "龙岗区",
+   "lng": 114.122605,
+   "lat": 22.601397,
+   "listings": 16,
+   "dining_count": 600,
+   "daily_count": 462,
+   "nightlife_count": 14,
+   "commute_min": 42.0,
+   "samples": 1
+  },
+  {
+   "id": 207,
+   "name": "京基御景峯",
+   "district": "南山区",
+   "lng": null,
+   "lat": null,
+   "listings": 15,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 182,
+   "name": "世和公寓",
+   "district": null,
+   "lng": null,
+   "lat": null,
+   "listings": 14,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 437,
+   "name": "云端小筑",
+   "district": null,
+   "lng": 113.885275,
+   "lat": 22.578075,
+   "listings": 10,
+   "dining_count": 600,
+   "daily_count": 435,
+   "nightlife_count": 18,
+   "commute_min": 69.0,
+   "samples": 1
+  },
+  {
+   "id": 81,
+   "name": "金地龙城中央三期",
+   "district": "龙岗区",
+   "lng": 114.251874,
+   "lat": 22.712549,
+   "listings": 9,
+   "dining_count": 600,
+   "daily_count": 368,
+   "nightlife_count": 21,
+   "commute_min": 91.0,
+   "samples": 2
+  },
+  {
+   "id": 11,
+   "name": "悦彩城（西北地块）",
+   "district": "罗湖区",
+   "lng": null,
+   "lat": null,
+   "listings": 9,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 253,
+   "name": "城市天地广场",
+   "district": "罗湖区",
+   "lng": 114.113112,
+   "lat": 22.537679,
+   "listings": 9,
+   "dining_count": 600,
+   "daily_count": 291,
+   "nightlife_count": 29,
+   "commute_min": 39.0,
+   "samples": 1
+  },
+  {
+   "id": 147,
+   "name": "拾光里公寓",
+   "district": null,
+   "lng": 114.139485,
+   "lat": 22.600809,
+   "listings": 8,
+   "dining_count": 455,
+   "daily_count": 169,
+   "nightlife_count": 8,
+   "commute_min": 64.0,
+   "samples": 1
+  },
+  {
+   "id": 49,
+   "name": "河豚公寓",
+   "district": null,
+   "lng": 113.912125,
+   "lat": 22.577975,
+   "listings": 8,
+   "dining_count": 600,
+   "daily_count": 255,
+   "nightlife_count": 10,
+   "commute_min": 50.0,
+   "samples": 1
+  },
+  {
+   "id": 206,
+   "name": "旭飞华达园",
+   "district": "罗湖区",
+   "lng": null,
+   "lat": null,
+   "listings": 8,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 200,
+   "name": "荟寓",
+   "district": null,
+   "lng": null,
+   "lat": null,
+   "listings": 8,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 336,
+   "name": "东门168",
+   "district": "罗湖区",
+   "lng": null,
+   "lat": null,
+   "listings": 7,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 428,
+   "name": "泰华梧桐酒店公寓",
+   "district": null,
+   "lng": null,
+   "lat": null,
+   "listings": 7,
+   "dining_count": null,
+   "daily_count": null,
+   "nightlife_count": null,
+   "commute_min": null,
+   "samples": 0
+  },
+  {
+   "id": 68,
+   "name": "国展苑",
+   "district": "龙岗区",
+   "lng": 114.118808,
+   "lat": 22.595231,
+   "listings": 6,
+   "dining_count": 600,
+   "daily_count": 368,
+   "nightlife_count": 11,
+   "commute_min": 55.0,
+   "samples": 1
+  }
+ ],
+ "runs": [
+  {
+   "id": 120,
+   "status": "done",
+   "stats": {
+    "new": 836,
+    "gone": 0,
+    "line": "li110460696",
+    "sort": "newest",
+    "pages": 30,
+    "scope": "line:li110460696",
+    "scored": 505,
+    "fetched": 900,
+    "suspect": 0,
+    "updated": 64,
+    "baseline": false,
+    "district": "",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T08:18:21.777211+00:00",
+   "finished_at": "2026-10-29T08:19:23.455406+00:00"
+  },
+  {
+   "id": 119,
+   "status": "done",
+   "stats": {
+    "new": 3,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 18,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 27,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T08:17:57.939289+00:00",
+   "finished_at": "2026-10-29T08:17:59.347038+00:00"
+  },
+  {
+   "id": 118,
+   "status": "done",
+   "stats": {
+    "new": 1,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 18,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 29,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T08:07:55.725397+00:00",
+   "finished_at": "2026-10-29T08:07:57.095688+00:00"
+  },
+  {
+   "id": 117,
+   "status": "done",
+   "stats": {
+    "new": 2,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 18,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 28,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T07:57:58.531849+00:00",
+   "finished_at": "2026-10-29T07:57:59.870517+00:00"
+  },
+  {
+   "id": 116,
+   "status": "done",
+   "stats": {
+    "new": 2,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 20,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 28,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T07:47:56.330915+00:00",
+   "finished_at": "2026-10-29T07:47:57.671085+00:00"
+  },
+  {
+   "id": 115,
+   "status": "done",
+   "stats": {
+    "new": 7,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 21,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 23,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T07:37:59.128292+00:00",
+   "finished_at": "2026-10-29T07:38:00.487930+00:00"
+  },
+  {
+   "id": 114,
+   "status": "done",
+   "stats": {
+    "new": 4,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 26,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 26,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T07:27:56.860954+00:00",
+   "finished_at": "2026-10-29T07:27:58.243658+00:00"
+  },
+  {
+   "id": 113,
+   "status": "done",
+   "stats": {
+    "new": 1,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 25,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 29,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T07:17:54.684865+00:00",
+   "finished_at": "2026-10-29T07:17:56.031083+00:00"
+  },
+  {
+   "id": 112,
+   "status": "done",
+   "stats": {
+    "new": 1,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 25,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 29,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T07:07:57.459678+00:00",
+   "finished_at": "2026-10-29T07:07:58.812557+00:00"
+  },
+  {
+   "id": 111,
+   "status": "done",
+   "stats": {
+    "new": 2,
+    "gone": 0,
+    "sort": "newest",
+    "pages": 1,
+    "scored": 26,
+    "fetched": 30,
+    "suspect": 0,
+    "updated": 28,
+    "baseline": false,
+    "district": "longgangqu",
+    "full_scan": false,
+    "price_changes": 0
+   },
+   "error": null,
+   "started_at": "2026-10-29T06:57:55.257448+00:00",
+   "finished_at": "2026-10-29T06:57:56.602346+00:00"
+  }
+ ],
+ "tasks": [
+  {
+   "id": 1,
+   "name": "贝壳-深圳5号线快循环",
+   "enabled": false,
+   "filters": {
+    "line": "li110460696",
+    "min_area": 30,
+    "fast_pages": 1,
+    "line_label": "5号线(环中线)",
+    "slow_pages": 30,
+    "exclude_keywords": [
+     "独栋",
+     "床位",
+     "合租",
+     "短租"
+    ]
+   },
+   "schedule": {
+    "fast_minutes": 30,
+    "slow_minutes": 360
+   }
+  },
+  {
+   "id": 2,
+   "name": "链家-深圳全量慢循环",
+   "enabled": false,
+   "filters": {},
+   "schedule": {
+    "fast_minutes": 60,
+    "slow_minutes": 360
+   }
+  }
+ ]
+};
+const S = DATA.stats || {};
+const LIST = DATA.listings || [];
+const COMM = DATA.communities || [];
+const RUNS = DATA.runs || [];
+const TASKS = DATA.tasks || [];
+const num = n => Number(n||0).toLocaleString('zh-CN');
+const money = n => '¥' + Number(n||0).toLocaleString('zh-CN');
+
+const PAGES = {dash:['工作台','概览 / 工作台'],listings:['房源库','数据 / 房源库'],commute:['小区与通勤','数据 / 小区与通勤'],images:['图片 / AI','数据 / 图片与 AI'],tasks:['采集任务','运营 / 采集任务'],budget:['预算与设置','运营 / 预算与设置'],logs:['运行日志','运营 / 运行日志']};
+function nav(p){
+  document.querySelectorAll('.pg').forEach(el=>el.classList.remove('on'));
+  document.getElementById('p-'+p).classList.add('on');
+  document.querySelectorAll('.nv').forEach(el=>el.classList.toggle('on', el.dataset.p===p));
+  document.getElementById('pageTitle').textContent=PAGES[p][0];
+  document.getElementById('crumb').textContent=PAGES[p][1];
+  if(p==='listings') renderListings();
+  if(p==='commute') renderComm();
+  if(p==='logs') renderLogs();
+}
+document.querySelectorAll('.nv').forEach(el=>el.addEventListener('click',()=>nav(el.dataset.p)));
+
+function renderRuns(){
+  const tb=document.getElementById('runRows'); if(!tb) return;
+  tb.innerHTML = RUNS.slice(0,6).map(r=>{
+    const st=(r.stats||{});
+    const ok=r.status==='done';
+    const t=r.started_at ? new Date(r.started_at).toLocaleString('zh-CN',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+    return `<tr><td class="mo">#${r.id}</td><td>${ok?'全量采集':'采集'}</td><td><span class="tg ${ok?'g':'r'}">${ok?'完成':'失败'}</span></td><td>${num(st.fetched)} / <b style="color:var(--gn)">${num(st.new)}</b></td><td>${num(st.scored)}</td><td class="mo">${t}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">暂无运行记录</td></tr>';
+}
+function renderLogs(){
+  const tb=document.getElementById('logRows'); if(!tb) return;
+  tb.innerHTML = RUNS.map(r=>{
+    const st=r.stats||{}; const ok=r.status==='done';
+    return `<tr><td class="mo">#${r.id}</td><td><span class="tg ${ok?'g':'r'}">${ok?'完成':'失败'}</span></td><td>${num(st.fetched)}</td><td>${num(st.new)}</td><td>${num(st.scored)}</td><td class="mo">—</td><td class="dm">${(r.error||'').slice(0,40)||'—'}</td></tr>`;
+  }).join('');
+}
+function renderListings(){
+  const q=(document.getElementById('q')?.value||'').trim();
+  const d=document.getElementById('fDistrict')?.value||'';
+  const smin=Number(document.getElementById('fScore')?.value||0);
+  const rmax=Number(document.getElementById('fRent')?.value||0);
+  const line5=document.getElementById('fLine')?.checked;
+  let xs=LIST.filter(x=>{
+    if(q && !((x.title||'')+(x.community_name||'')).includes(q)) return false;
+    if(d && x.district!==d) return false;
+    if((x.score||0)<smin) return false;
+    if(rmax && (x.rent||0)>rmax) return false;
+    return true;
+  });
+  // line5 filter is illustrative: top rows are all from the line-5 task
+  const tb=document.getElementById('listingRows');
+  tb.innerHTML = xs.slice(0,12).map(x=>{
+    const r=x.score_reasons||{};
+    const sc=x.score||0;
+    return `<tr onclick="openDetail(${x.id})" style="cursor:pointer">
+      <td><div class="nm">${x.community_name||'—'}</div><div class="sm">${(x.title||'').slice(0,26)}</div></td>
+      <td>${x.district||'—'}</td><td>${x.layout||'—'}<div class="sm">${x.area||'—'}㎡</div></td>
+      <td><b>${money(x.rent)}</b></td>
+      <td><span class="tg ${sc>=85?'g':sc>=75?'b':'n'}">${sc}</span></td>
+      <td>${x.commute_min!=null?x.commute_min+' 分钟':'—'}<div class="sm">${x.samples||0} 次样本</div></td>
+      <td>${x.dining_count??'—'} / ${x.daily_count??'—'}</td>
+      <td><span class="tg ${x.status==='active'?'g':'a'}">${x.status==='active'?'在架':'待核实'}</span></td>
+      <td><button class="btn s" onclick="event.stopPropagation();openDetail(${x.id})">详情</button></td></tr>`;
+  }).join('') || '<tr><td colspan="9" class="empty">没有匹配房源</td></tr>';
+  document.getElementById('listCount').textContent = xs.length + ' 条匹配 · 显示前 12 条';
+  document.getElementById('pgInfo').textContent = '共 ' + xs.length + ' 条';
+}
+function renderComm(){
+  const tb=document.getElementById('commRows'); if(!tb) return;
+  tb.innerHTML = COMM.map(c=>{
+    const has=(c.lng!=null);
+    return `<tr><td><b>${c.name}</b></td><td>${c.district||'—'}</td><td>${c.listings}</td>
+      <td>${has?'<span class="tg g">有</span>':'<span class="tg r">无</span>'}</td>
+      <td>${c.commute_min!=null?c.commute_min+' 分钟':'—'}</td><td>${c.samples||0}</td>
+      <td>${c.dining_count??'—'} / ${c.daily_count??'—'} / ${c.nightlife_count??'—'}</td>
+      <td>${has&&c.samples?'<span class="tg g">已富化</span>':has?'<span class="tg a">缺通勤</span>':'<span class="tg n">缺坐标</span>'}</td></tr>`;
+  }).join('');
+}
+function openDetail(id){
+  const x=LIST.find(v=>v.id===id); if(!x) return;
+  const r=x.score_reasons||{};
+  document.getElementById('mTitle').textContent=(x.community_name||'房源')+' · '+money(x.rent)+'/月';
+  const link=document.getElementById('mLink'); if(x.url) link.href=x.url;
+  document.getElementById('mBody').innerHTML=`
+    <div class="flexrow" style="margin-bottom:12px"><span class="tg b">${x.district||''}</span><span class="tg n">${x.layout||''}</span><span class="tg n">${x.area||'—'}㎡</span><span class="tg ${x.score>=85?'g':x.score>=75?'b':'n'}">评分 ${x.score}</span><span class="tg g">通勤 ${x.commute_min??'—'} 分钟</span></div>
+    <div class="fld"><label>评分理由</label><div class="cd" style="padding:12px;font-size:12px;line-height:1.9;color:var(--tx2)">${Object.entries(r).filter(([k])=>k!=='risk').map(([k,v])=>`<div><b style="color:var(--tx)">${k}</b>：${Array.isArray(v)?v.join('、'):v}</div>`).join('')}</div></div>
+    <div class="fld"><label>数据完整性</label><div class="flexrow"><span class="tg ${x.dining_count!=null?'g':'r'}">POI</span><span class="tg ${x.samples?'g':'r'}">通勤样本 ${x.samples||0}</span><span class="tg r">详情图 0</span><span class="tg r">AI 标签 0</span></div></div>
+    <div class="fld"><label>原始链接</label><div class="mo" style="font-size:10.5px;color:var(--tx3);word-break:break-all">${x.url||'—'}</div></div>
+    <div class="dm" style="font-size:11px;line-height:1.7">原型数据取自当前库；图片/AI 标签尚未接入。评分中的“口碑”为中性 0.5，不代表真实口碑。</div>`;
+  document.getElementById('mask').classList.add('on');
+}
+function closeModal(){document.getElementById('mask').classList.remove('on');}
+let tt=null;
+function toast(m){const el=document.getElementById('toast');el.textContent=m;el.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('on'),2200);}
+document.addEventListener('DOMContentLoaded',()=>{
+  const set=(id,v)=>{const el=document.getElementById(id); if(el&&v!=null) el.textContent=v;};
+  set('sListings',S.listings); set('sLine5',S.line5); set('sScored',S.scored); set('s75',S.ge75); set('sMedian',S.median_score); set('sMax',S.max_score);
+  set('sComm',S.communities); set('sGeo',S.geocoded); set('sCommute',S.commute_samples); set('sCommuteComm',S.commute_communities);
+  set('cComm',S.communities); set('cGeo',S.geocoded); set('cSamples',S.commute_communities); set('cNoGeo',(S.communities-S.geocoded));
+  renderRuns(); renderListings(); renderComm(); renderLogs();
+  if(location.hash){
+    const p=location.hash.slice(1);
+    if(PAGES[p]) nav(p);
+  }
+});
+</script>
+</body>
+</html>

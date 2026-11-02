@@ -1,0 +1,17 @@
+[Unit]
+Description=RentRadar Worker
+After=network-online.target docker.service rentradar-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kkk
+Group=kkk
+WorkingDirectory=/home/kkk/Project/rentradar/backend
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/kkk/Project/rentradar/backend/.venv/bin/python -m app.workers.worker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

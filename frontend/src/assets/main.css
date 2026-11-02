@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-canvas text-ink;
+  }
+  ::selection {
+    @apply bg-forest/15 text-forest-dark;
+  }
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line2;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-paper shadow-card;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-line2 bg-paper px-3.5 py-2 text-[13px] font-medium text-ink transition hover:border-forest hover:bg-forest-soft hover:text-forest disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply btn border-forest bg-forest text-white hover:bg-forest-dark hover:text-white;
+  }
+  .btn-dark {
+    @apply btn border-ink bg-ink text-paper hover:bg-black hover:text-white;
+  }
+  .btn-ghost {
+    @apply btn border-transparent bg-transparent text-muted hover:bg-paper2 hover:text-ink;
+  }
+  .btn-danger {
+    @apply btn border-coral/30 bg-coral-soft text-coral hover:border-coral hover:bg-coral-soft;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1 text-[11px] rounded-lg;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line2 bg-paper2 px-3 py-2 text-[13px] text-ink outline-none transition placeholder:text-faint focus:border-forest focus:ring-2 focus:ring-forest-soft;
+  }
+  .label {
+    @apply mb-1.5 block text-[11px] font-semibold text-muted;
+  }
+  .tag {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold leading-5;
+  }
+  .tag-green {
+    @apply tag bg-forest-soft text-forest;
+  }
+  .tag-amber {
+    @apply tag bg-amber-soft text-amber;
+  }
+  .tag-coral {
+    @apply tag bg-coral-soft text-coral;
+  }
+  .tag-neutral {
+    @apply tag bg-sand text-muted;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .panel-title {
+    @apply flex items-center gap-2 text-[13px] font-semibold text-ink;
+  }
+  .panel-title .hint {
+    @apply ml-auto text-[11px] font-normal text-faint;
+  }
+  .divider {
+    @apply border-t border-line;
+  }
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 0.18s ease;
+  }
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+  }
+  .slide-enter-active,
+  .slide-leave-active {
+    transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease;
+  }
+  .slide-enter-from,
+  .slide-leave-to {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  .sheet-enter-active,
+  .sheet-leave-active {
+    transition: transform 0.22s ease, opacity 0.2s ease;
+  }
+  .sheet-enter-from,
+  .sheet-leave-to {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+}

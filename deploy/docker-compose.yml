@@ -1,0 +1,24 @@
+name: rentradar
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: rentradar-postgres
+    environment:
+      POSTGRES_USER: rentradar
+      POSTGRES_PASSWORD: rentradar_dev
+      POSTGRES_DB: rentradar
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - rentradar_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rentradar -d rentradar"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  rentradar_pgdata:

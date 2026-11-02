@@ -1,0 +1,205 @@
+{
+  "status": 0,
+  "msg": "OK",
+  "data": {
+    "total": 6688,
+    "list": [
+      {
+        "house_code": "SZ2223778397576757248",
+        "house_title": "整租·恒立心海湾花园 4室2厅",
+        "resblock_id": "2411049951361",
+        "resblock_name": "恒立心海湾花园",
+        "district_name": "南山区",
+        "bizcircle_name": "前海",
+        "rent_price_listing": "12000",
+        "rent_area": "149.00",
+        "layout": "4室2厅2卫",
+        "frame_orientation": "南",
+        "geolatitudelongitude": "22.507795620093905,113.90227876915979",
+        "subway_distance": " 距5号线(环中线)-荔湾站545m",
+        "latest_price_change": {
+          "changePrice": 388,
+          "time": 1793067741000,
+          "type": 1
+        },
+        "app_plat_ctime": 1792494086.899,
+        "availableRentTime": 1792896909000,
+        "floor_level": 200500000002,
+        "floor_total": 32,
+        "house_tags": [
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "is_subway_house",
+            "name": "近地铁"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "decoration",
+            "name": "精装修"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "has_elevator",
+            "name": "有电梯"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "deposit_1_pay_1",
+            "name": "押一付一"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "two_bathroom",
+            "name": "双卫生间"
+          }
+        ],
+        "list_picture": "https://ke-image.ljcdn.com/lease-image/house/7cf68bfa7586bec0a985cbe9199842c3.jpeg.280x210.jpg",
+        "list_picture_raw": "/lease-image/house/7cf68bfa7586bec0a985cbe9199842c3.jpeg",
+        "pc_url": "https://sz.zu.ke.com/zufang/SZ2223778397576757248.html",
+        "m_url": "https://m.ke.com/chuzu/sz/zufang/SZ2223778397576757248.html",
+        "apartment_type": null,
+        "house_status": "202300000001",
+        "rent_type": "200600000001",
+        "house_tags_str": "has_elevator,first_rent,is_key,water_elec_type,monthly_pay,is_subway_house,deposit_1_pay_1,is_vr,decoration,two_bathroom,ziying_sxz,sxz_monthly_pay,hqi_diamond,middle_ware_discount,orient_all_south,district_low_price",
+        "app_source_brand_name": "贝壳优选",
+        "desc": "149.00㎡ | 南",
+        "sub_desc": "南山区·前海 距5号线(环中线)-荔湾站545m"
+      },
+      {
+        "house_code": "1010009",
+        "house_title": "独栋·无忧公寓· 海乐社区店 整租-豪华阳台大单间-不短租",
+        "resblock_id": "2420055507810515",
+        "resblock_name": "安乐三街二巷",
+        "district_name": "宝安区",
+        "bizcircle_name": "翻身",
+        "rent_price_listing": "3350",
+        "rent_area": "40.00",
+        "layout": "1室0厅1卫1厨",
+        "frame_orientation": "",
+        "geolatitudelongitude": "22.566212642297582,113.90275349097804",
+        "subway_distance": " 距5号线(环中线)-翻身站380m",
+        "latest_price_change": {
+          "changePrice": 0,
+          "time": 0
+        },
+        "app_plat_ctime": 1789983002,
+        "availableRentTime": 1791129600000,
+        "floor_level": 0,
+        "floor_total": 0,
+        "house_tags": [
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "is_subway_house",
+            "name": "近地铁"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "decoration",
+            "name": "精装修"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "bedding_complete",
+            "name": "拎包入住"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "rent_period_month",
+            "name": "月租"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "balcony",
+            "name": "有阳台"
+          }
+        ],
+        "list_picture": "https://ke-image.ljcdn.com/wanjia/f234be668365d157383c60073ba92ab9-1789982983330/7f307a9b6fda738688a416151cea9b79.jpg.280x210.jpg",
+        "list_picture_raw": "/wanjia/f234be668365d157383c60073ba92ab9-1789982983330/7f307a9b6fda738688a416151cea9b79.jpg",
+        "pc_url": "https://sz.zu.ke.com/apartment/111253.html",
+        "m_url": "https://m.ke.com/chuzu/sz/apartment/layout/1010009.html",
+        "apartment_type": 1,
+        "house_status": "202300000001",
+        "rent_type": "200600000000",
+        "house_tags_str": "authorization_apartment_single,is_subway_house,decoration,bedding_complete,rent_period_month,balcony,open_kitchen,monthly_pay,no_agency_fee,raise_pet",
+        "app_source_brand_name": "无忧公寓·",
+        "desc": "40.00㎡ | 1室0厅1卫1厨",
+        "sub_desc": "宝安区·翻身 距5号线(环中线)-翻身站380m"
+      },
+      {
+        "house_code": "SZ1965358134482436096",
+        "house_title": "整租·信义假日名城五期A逸翠园 2室2厅",
+        "resblock_id": "2411063046762",
+        "resblock_name": "信义假日名城五期A逸翠园",
+        "district_name": "龙岗区",
+        "bizcircle_name": "布吉关",
+        "rent_price_listing": "4100",
+        "rent_area": "71.00",
+        "layout": "2室2厅1卫",
+        "frame_orientation": "南",
+        "geolatitudelongitude": "22.599841346190246,114.12966846837068",
+        "subway_distance": " 距3号线(龙岗线)-布吉站1.1km",
+        "latest_price_change": {
+          "changePrice": 0,
+          "time": 1792913406000
+        },
+        "app_plat_ctime": 1792945993.591,
+        "availableRentTime": 1795536000000,
+        "floor_level": 200500000001,
+        "floor_total": 11,
+        "house_tags": [
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "is_subway_house",
+            "name": "近地铁"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "decoration",
+            "name": "精装修"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "has_elevator",
+            "name": "有电梯"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "deposit_1_pay_1",
+            "name": "押一付一"
+          },
+          {
+            "color_bg": "F1F4F9",
+            "color_txt": "5373B2",
+            "key": "is_new",
+            "name": "新上"
+          }
+        ],
+        "list_picture": "https://ke-image.ljcdn.com/110000-inspection/608fcb2e-8dca-4e78-80ce-747b5c48346a.jpg.280x210.jpg",
+        "list_picture_raw": "/110000-inspection/608fcb2e-8dca-4e78-80ce-747b5c48346a.jpg",
+        "pc_url": "https://sz.zu.ke.com/zufang/SZ1965358134482436096.html",
+        "m_url": "https://m.ke.com/chuzu/sz/zufang/SZ1965358134482436096.html",
+        "apartment_type": null,
+        "house_status": "202300000001",
+        "rent_type": "200600000001",
+        "house_tags_str": "has_elevator,is_key,is_new,water_elec_type,monthly_pay,is_subway_house,deposit_1_pay_1,top_floor,is_vr,follow_rent,advent_follow_rent,marketing_smart,contract_heliotrope,reservation,rent_period_month,decoration,ziying_sxz,sxz_monthly_pay,bookable,matching_tape,hqi_diamond,middle_ware_discount,orient_all_south,first_time_rental",
+        "app_source_brand_name": "贝壳优选",
+        "desc": "71.00㎡ | 南",
+        "sub_desc": "龙岗区·布吉关 距3号线(龙岗线)-布吉站1.1km"
+      }
+    ]
+  }
+}
