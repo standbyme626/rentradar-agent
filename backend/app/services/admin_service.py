@@ -330,6 +330,7 @@ def build_crawl_coverage(
         pages = stats.get("pages")
         complete = bool(
             run is not None
+            and getattr(run, "status", None) == "done"
             and total is not None
             and int(pages or 0) * page_size >= int(total)
         )
