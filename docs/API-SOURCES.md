@@ -327,7 +327,7 @@ GET https://map.amap.com/service/subway?_1469083453978&srhdata=4403_drw_shenzhen
 |---|---|---|---|
 | 百度地图 MCP `baidu-maps/mcp` 447★ | 约 5,000 次/天 | geocode/POI/批量算路/路况 | 官方，已核对工具 |
 | 高德（现有 Key） | 项目 Key 约 5,000 次/月 | 通勤/POI 主力 | 现役，省着用 |
-| 天地图 | 个人约 10,000 次/天 | geocode/POI/驾车/公交；GCJ-02 | 需注册 tk，官方文档已核对 |
+| 天地图 | 个人约 10,000 次/天 | geocode/POI/WMTS 瓦片；CGCS2000/WGS-84（与 GCJ-02 有偏移） | 需注册 tk，官方文档已核对 |
 | 高德 MCP | 与高德 Key 共享额度 | 12+ 工具 | 官方；需支付宝实名（X 用户反馈） |
 | OSM Overpass | 免费 | POI 分流 | 公共实例常满负载，建议自建/换镜像 |
 
@@ -523,3 +523,40 @@ GET https://map.amap.com/service/subway?_1469083453978&srhdata=4403_drw_shenzhen
   - `DIDI_MCP_KEY`
   - `SZ_OPENDATA_APP_KEY`
 - 天地图/开放数据均需个人实名注册；滴滴 MCP 用个人账号激活
+
+
+---
+
+## 10. P1 新增接口（2026-11-04）
+
+### Agent 工具运行时（W4）
+
+- `POST /api/agent/messages/stream`：SSE 事件不变；新增真实工具步骤（`search_listings` / `get_listing` / `compare_listings` / `commute_lookup` / `price_history`），`budget` 事件带 `ai` 额度信息。
+- `GET /api/admin/agent/sessions`：新增 `guardrails` 与 `toolCalls`（每次工具调用的参数/耗时/摘要/错误）。
+- `GET /api/admin/agent/eval`：最近一次与历史规则基线评测。
+- `POST /api/admin/agent/eval/run`：运行 60 条黄金集（48 查询 + 12 护栏），不调用外部模型。
+- `GET /api/admin/agent/cost?days=7`：会话 token/成本/兜底/工具/护栏/ModelScope 额度聚合。
+- 护栏：`aiDailyCap` 调用前硬停；手机号/邮箱/身份证脱敏后才可送模型；注入/越权/危险指令命中时不送模型，只走规则。
+
+### 封面图片（W5）
+
+- `GET /api/admin/images`：队列 + 统计 + 重复封面组。
+- `POST /api/admin/images/analyze`：入队 `image_analysis`，只分析候选（有封面 URL、按评分排序）。
+- `GET /api/admin/images/{listing_id}/file`：读取本地缓存封面。
+- 数据：贝壳列表 API 的 `image_url` 单张封面；详情多图需鉴权，未接入。
+- 算法：64-bit dHash（汉明距离 ≤10 重复）；价格中位异常（同小区/同区同户型 ≥5 样本）；中介话术关键词；≥2 个非质量信号才标可疑。视觉标签需 Qwen-VL/本地 VL 授权，默认关闭（`APP_IMAGE_VISION_ENABLED=false`）。
+
+### 口碑证据（W6）
+
+- `GET /api/admin/reputation`：有/无证据小区、高风险、最近证据。
+- `GET /api/admin/reputation/communities?q=`、`GET /api/admin/reputation/communities/{id}`。
+- `POST /api/admin/reputation/mentions`、`PATCH .../mentions/{id}`、`DELETE .../mentions/{id}`：人工录入/确认/排除证据，链接去重。
+- `POST /api/admin/reputation/extract`：把粘贴原文交给已配置的 ModelScope 文本模型抽草稿；结果默认 `uncertain`，人工确认后才计分。
+- 聚合：180 天半衰期，`verified` 参与评分，`uncertain` 只展示，`rejected` 排除；无证据时中性分并显示“数据不足”。
+
+### 地图（W7）
+
+- `GET /api/maps/communities`：真实小区坐标（GCJ-02→WGS-84）、房源数、中位租金、评分、通勤 p50/p90、代表房源。
+- `GET /api/maps/tiles/{layer}/{z}/{x}/{y}`：天地图 WMTS 代理 + 磁盘缓存（默认 30 天）；Key 仅在服务端，沿用 10943 出口。
+- `GET /api/maps/tiles/stats/cache`：缓存统计（admin）。
+- 天地图 WMTS：`https://t{0-7}.tianditu.gov.cn/{layer}_w/wmts?...&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=...`；`_w` 矩阵集，1–18 级，256px；详见 `docs/TIANDITU-MAP.md`。

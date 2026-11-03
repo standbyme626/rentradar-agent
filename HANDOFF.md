@@ -206,3 +206,16 @@ curl -sN -X POST http://192.168.31.197:8010/api/agent/messages/stream \
 - 监控：测试监控扫描 2 天事件 711 条 pending，静默时未发送
 - 管理端设置 PUT 后写入 `app_settings.admin_settings`
 - 最近慢扫：30 页 / 900 条 / 新增 148 / 去重 180 / `suspect_skipped=true`
+
+
+---
+
+## 2026-11-04 · P1 补记（Agent 工具运行时 / 封面 / 口碑 / 地图）
+
+- **迁移**：head `b2c3d4e5f6a7`，新增 `agent_tool_calls`、`listing_images`、`listing_image_analysis`、`reputation_mentions`、`agent_eval_runs`，`agent_sessions.guardrails`。
+- **Agent**：`agent_tools.py` 白名单 5 个只读工具 + `save_monitor` 写工具（仅显式“保存/监控”路径）；`llm_service.plan_tools` 严格 JSON 计划，失败回退 `rule_plan`；`guardrails.py` 预算硬停/PII/注入；每次调用落 trace；`agent_eval_service.py` 60 条黄金集（48 查询 + 12 护栏），`POST /api/admin/agent/eval/run` 零外部调用。
+- **图片**：`image_service.py` 下载贝壳列表封面到 `APP_IMAGE_CACHE_DIR`，dHash + 重复/低价/话术信号，≥2 信号才可疑；`image_analysis` job；管理端“图片 / AI”读真实队列与重复组。视觉模型未授权，标签标记“待视觉”。
+- **口碑**：`reputation_service.py` + 管理端“口碑证据”页；人工录入/抽取草稿/确认/排除；评分第 5 项改为真实聚合，无证据显示“数据不足（中性分）”。抽取调用 ModelScope 文本模型，默认草稿 uncertain。
+- **地图**：`map_service.py` 输出 WGS-84 小区坐标/中位租金/评分/通勤 p50；Tianditu `fetch_tile` + 服务端磁盘缓存；前端 `MapPanel.vue` 自研墨卡托瓦片渲染 + marker/筛选/详情入口；无 Key 时降级坐标网格。调研见 `docs/TIANDITU-MAP.md`。
+- **验证**：`pytest -q` 119 passed；`ruff check app tests` 全绿；`npm run build` 通过。UI 证据同样使用本地 mock API（agent 无生产库权限），见 `docs/evidence/p1-ui/`。
+- **仍需真实环境验证**：天地图瓦片需要有效 Key + 10943 出口；真实 rescore 需在生产库跑 `rescore` 才会把新口碑分写入 `score_reasons`；图片下载依赖贝壳 CDN 可达。

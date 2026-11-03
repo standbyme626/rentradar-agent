@@ -137,10 +137,14 @@
 - `enrich` 默认上限 100（单次约 500 次高德调用）、`rescore` 默认上限 2000（本地计算）；重复跑不会只处理前 200/500 条。
 - API 只绑 LAN；已启用登录/RBAC，但仍**不要直接公网暴露**；公网前需 TLS/反向代理/限流。
 - FastAPI SPA fallback 已对 `/api/*` 返回 JSON 404；未实现接口不会再返回 index.html。
-- API 管理页、管理端全部页面走真实后端；用户端聊天已切真实 LLM Agent，未配置/失败时回退规则版；Agent 评测/成本页仍为设计预览。
-- `analysis` job 只做本地重评分，`sampling` job 只做单次采样；详情图/AI/p50/p90 尚未接入。
+- API 管理页、管理端全部页面走真实后端；用户端聊天已切真实 LLM Agent，未配置/失败时回退规则版；Agent 评测/成本页已接真实基线（2026-11-04）。
+- `analysis` job 只做本地重评分，`sampling` job 只做单次采样；新增 `image_analysis` job 分析候选封面；详情多图仍不可用。
 - `admin_settings` 已在通知、调度、额度、Agent 预算事件和监控推送运行时读取；设置页保存即生效。
-- Agent 接入 LLM 后仍以本地库存为工具，不抓详情、不做图片 AI；LLM 失败自动回退，不能把规则版回答标成模型输出。
+- Agent 已接只读工具运行时（search/get/compare/commute/price），严格 JSON 计划 + 规则兜底；预算/PII/注入护栏；trace 落 `agent_tool_calls`；LLM 失败自动回退，不能把规则版回答标成模型输出。
+- 封面管线只处理列表单图：本地缓存 + 64-bit dHash + 价格异常 + 中介话术；≥2 个非质量信号才可疑；视觉大模型未授权，`APP_IMAGE_VISION_ENABLED=false`。
+- 口碑证据表 `reputation_mentions`：verified 计分、uncertain 只展示、rejected 排除；180 天半衰期；无证据显示“数据不足（中性分）”。
+- 地图数据走 `/api/maps/communities`（GCJ-02→WGS-84）；天地图瓦片由后端 `/api/maps/tiles/...` 代理缓存，Key 不下发浏览器；无 Key 时前端回退坐标网格。
+- P1 迁移 head `b2c3d4e5f6a7`（工具 trace / 封面 / 口碑 / 评测表）。
 - ModelScope Key 已配置：provider 状态正常；业务 LLM 调用已回写 provider_usage。Key 来源 `/root/.credentials/modelscope.env`，项目 `.env` 为 600。
 - V4.1F 是推理模型，响应含 `reasoning_content`；`max_tokens` 太小会把预算耗在思考上，当前解析 1200 / 回答 900。
 - 模型页虽标 `SupportApiInference:false`，但 `/v1/models` 与真实 chat 均确认 `-1017` 可用；单模型约 500 次/天，注意别刷。
@@ -167,6 +171,10 @@ cd backend
 curl -s http://192.168.31.197:8010/api/admin/providers | python -m json.tool
 curl -s -X POST http://192.168.31.197:8010/api/admin/providers/tianditu/test | python -m json.tool
 ```
+
+## 验证基线（2026-11-04）
+
+- 后端 119 passed；ruff 全绿；前端 `npm run build` 通过。
 
 ## 验证基线（2026-10-31）
 
