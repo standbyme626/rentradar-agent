@@ -197,10 +197,45 @@ export interface SamplingRequest {
   modes: string[]
 }
 
+export interface CrawlCoverageShard {
+  condition: string
+  station: string
+  scope: string
+  listings: number
+  complete: boolean
+  last_run: {
+    id: number | null
+    status: string | null
+    started_at: string | null
+    finished_at: string | null
+    pages: number | null
+    fetched: number | null
+    total: number | null
+    duplicates: number | null
+    suspect_skipped: boolean
+  } | null
+}
+
+export interface CrawlCoverage {
+  task_id: number | null
+  task_name: string | null
+  line: string | null
+  shard_cursor: number
+  shards: CrawlCoverageShard[]
+  summary: {
+    shards: number
+    listings: number
+    complete: number
+    scanned: number
+    last_scan_at: string | null
+  }
+}
+
 export interface AdminService {
   overview(): Promise<AdminOverview>
   candidates(): Promise<Candidate[]>
   coverage(): Promise<CoverageData>
+  crawlCoverage(taskId?: number): Promise<CrawlCoverage>
   quality(): Promise<QualityData>
   agentSessions(): Promise<AgentSession[]>
   runs(): Promise<Run[]>

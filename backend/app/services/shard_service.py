@@ -24,6 +24,51 @@ def normalize_page_size(value: int) -> int:
     return max(1, min(int(value), beike_api.MAX_LIMIT))
 
 
+def shard_conditions(filters: dict | None) -> list[str]:
+    return [
+        str(item).strip()
+        for item in (filters or {}).get("shard_conditions") or []
+        if str(item).strip()
+    ]
+
+
+def apply_shard_plan(
+    filters: dict | None,
+    conditions: list[str],
+    line_condition: str | None = None,
+    *,
+    cursor: int = 0,
+    labels: list[str] | None = None,
+) -> dict:
+    """Store a station-shard plan in a task's filters (pure, no DB)."""
+    cleaned = [str(item) for item in conditions if str(item).strip()]
+    updated = {
+        **(filters or {}),
+        "shard_conditions": cleaned,
+        "shard_cursor": max(0, int(cursor)),
+    }
+    if labels is not None and len(labels) == len(cleaned):
+        updated["shard_labels"] = [str(item) for item in labels]
+    if line_condition:
+        updated["shard_line"] = line_condition
+    return updated
+
+
+def next_shard(filters: dict | None) -> tuple[str, dict]:
+    """Return the next shard condition and the filters with an advanced cursor.
+
+    Returns ``("", filters)`` when no plan is configured, so the scheduler keeps
+    the existing line-wide slow scan.
+    """
+    conditions = shard_conditions(filters)
+    if not conditions:
+        return "", dict(filters or {})
+    cursor = int((filters or {}).get("shard_cursor") or 0) % len(conditions)
+    line = conditions[cursor]
+    updated = {**(filters or {}), "shard_cursor": (cursor + 1) % len(conditions)}
+    return line, updated
+
+
 def _reachable(page_size: int) -> int:
     return beike_api.max_pages(page_size) * page_size
 

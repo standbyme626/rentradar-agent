@@ -7,6 +7,7 @@ import type {
   AdminSettings,
   AuditLogEntry,
   CoverageData,
+  CrawlCoverage,
   Job,
   QualityData,
   SamplingRequest,
@@ -17,6 +18,10 @@ const httpAdminService: AdminService = {
   overview: () => request<AdminOverview>('/admin/overview'),
   candidates: () => request<Candidate[]>('/admin/candidates'),
   coverage: () => request<CoverageData>('/admin/coverage'),
+  crawlCoverage: (taskId) =>
+    request<CrawlCoverage>(
+      `/admin/crawl-coverage${taskId ? `?task_id=${taskId}` : ''}`,
+    ),
   quality: () => request<QualityData>('/admin/quality'),
   agentSessions: () => request<AgentSession[]>('/admin/agent/sessions'),
   runs: () => request<Run[]>('/admin/runs'),

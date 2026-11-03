@@ -3,6 +3,9 @@
 > 2026-10-31 03:45：地图/通勤已切到天地图 + 深圳地铁官方：Tianditu 负责地理编码/POI，SZMC 负责地铁+步行通勤；**高德与滴滴 MCP 已停用**。登录/RBAC/审计、Provider 额度、设置运行时、监控推送均已接；迁移 head `f1a2b3c4d5e6`；pytest 57 passed。初始管理员凭据在 `.secrets/initial-admin.txt`（600），登录页 `/login`。房源约 1395 套、824 套已评分。新会话先看 `HANDOFF.md`。
 > 项目根：`/home/kkk/Project/rentradar`；文档：`docs/PROJECT.md`、`docs/DEVELOPMENT.md`、**`docs/API-SOURCES.md`（外部接口/数据源清单，2026-10-30）**；参考项目：`reference/ai-goofish-monitor`（gitignored）。
 
+
+> **P0 收口（2026-11-04）**：W1 站点分片覆盖（planner/probe/apply-shards/scheduler 轮转/覆盖看板）、W2 通勤 `depart_bucket` + p50/p90、W3 详情真实数据 + 看房清单（状态/检查项/备注/照片链接/CSV 导出）已实现。迁移 head `a1b2c3d4e5f6`；pytest 82 passed；前端构建通过。生产数据验收仍需执行迁移、`apply-shards`、`sampling`/`rescore`，详见 `HANDOFF.md`。
+
 ## 运行形态
 
 | 组件 | 说明 | 端口/地址 |
@@ -40,6 +43,7 @@
 - `admin_settings` 运行时已生效：`amapMonthlyCap`、`aiDailyCap`、`batchCap`、`sessionAmapCap`（Agent 当前不调 AMAP，只在预算事件里展示）、`notifyBatchCap`、`notifyScoreMin`、`priceDropPct`、`quietStart/End`、`feishu`、`digest`、`quiet`、`pauseAlert`、`monitorPush`。
 - **监控匹配（2026-10-31）**：`agent_monitor_matches` 表；scheduler 每 5 分钟入队 `monitor_match`，worker 扫描新上架/重新上架/降价，按条件 + 通勤匹配，去重后写 pending；静默时段只入库不推送，非静默按 `notifyBatchCap` 分组推飞书并更新 `new_matches`。快速验证产生 711 条匹配（测试监控已删）。
 - 用户端已有本地持久化：历史需求/我的监控（localStorage）；地图可选 `VITE_AMAP_JS_KEY`，未配置时显示占位。
+- 详情抽屉（2026-11-04）：打开时拉 `/api/listings/{id}`，显示真实评分拆解（`score_reasons.components`）、价格快照、通勤 p50/p90、外卖实测、看房检查；不再写死 35/25/13/8/5/5 或假 sparkline。看房清单抽屉：状态/检查项/备注/照片链接/CSV 导出。
 - 构建：`cd frontend && npm run build`；FastAPI 8010 托管 `frontend/dist`，直接访问 `http://192.168.31.197:8010/`、`/admin`。Dev：`npm run dev`（127.0.0.1:5173）；环境变量样例 `frontend/.env.example`。
 - 旧 `src/views`/`src/layouts` 已从 tsconfig 排除、保留未删；新页面在 `src/features/chat`、`src/features/admin`。
 
@@ -66,7 +70,7 @@
 - 154 套活跃房源缺坐标、903 套缺通勤；170 个小区餐饮 POI 封顶（≥600）。
 - 新坐标小区尚未补 POI/通勤，按候选优先补，禁止全量 enrich。
 - 通勤起点为深圳会展中心（example=false）；新样本由 SZMC 生成（地铁+步行，provider=szmc），旧 AMAP 样本按 1 天阈值逐步重采。
-- 口碑仍为中性 0.5；通勤为单次采样（SZMC 地铁+步行或旧 AMAP），p50/p90 未做。
+- 口碑仍为中性 0.5；通勤已按 4 个 `depart_bucket` 采样并聚合 p50/p90；SZMC 为时刻表最短耗时，同 OD 不同时段结果相同（不等于实时拥堵）。
 - 外卖实测 5 条（全部夜宵时段，address_label 常缺失，confidence 0.5）。
 
 ## 采集
@@ -96,7 +100,7 @@
 ## 评分
 
 - 性价比：同小区同户型 30 天中位价，样本不足回落到同区同户型。
-- 通勤：高德综合公共交通单次采样（实际含地铁）；p50/p90 未做。通勤起点存 `app_settings.commute_destination`，**当前是「深圳会展中心」（example=false）**。
+- 通勤：小区 → 公司，SZMC 时刻表最短耗时；按 07:30/08:00/08:30/09:00 四个 `depart_bucket` 采样，评分取 p50，详情显示 p90 和样本数；`static=true` 表示时段无波动，不冒充实时。通勤目的地址存 `app_settings.commute_destination`，**当前是「深圳会展中心」（example=false）**。
 - **高德个人 Key 每月约 5000 次**：运行时已按 `amapMonthlyCap` 硬拦截，且已预置 900 次；禁止对全部小区批量 enrich；只对 Top 候选小区补样本，优先复用缓存。一次 498 小区全量 enrich 约 2500+ 次调用。
 - 便利：高德 1km 餐饮/便利店/超市/菜场 POI，对数归一化。
 - 条件/新鲜度保留；口碑中性。每条分数都有 `score_reasons`。
@@ -141,6 +145,8 @@
 - V4.1F 是推理模型，响应含 `reasoning_content`；`max_tokens` 太小会把预算耗在思考上，当前解析 1200 / 回答 900。
 - 模型页虽标 `SupportApiInference:false`，但 `/v1/models` 与真实 chat 均确认 `-1017` 可用；单模型约 500 次/天，注意别刷。
 - Agent 仍是“LLM 解析 + 本地确定性查询 + LLM 回答”，没有让 LLM 自由调用工具；监控已接推送。
+- SZMC `MinTimeJson` 无出发时间参数：4 个时段的结果相同，`static=true`；p90 只反映样本分布，不代表实时拥堵。不要把它写成“实时/高峰实测”。
+- UI 证据截图用本地 mock API（`docs/evidence/p0-ui/`），因为 agent 无生产库权限；不是生产数据截图。
 
 ## 常用命令
 
@@ -151,6 +157,7 @@ cd backend
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --sort newest --line li110460696 --transport api
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --transport cdp   # CDP 兜底，需先过验证码
 .venv/bin/python -m app.cli shards --line 5号线 --stations 20 --probe   # 生成/校验站点分片
+.venv/bin/python -m app.cli apply-shards --task-id 1 --line 5号线   # 写入分片计划+10/180 调度
 .venv/bin/python -m app.cli enrich --task-id 1 --limit 100
 .venv/bin/python -m app.cli rescore --task-id 1 --limit 2000
 .venv/bin/python -m app.cli digest --dry-run

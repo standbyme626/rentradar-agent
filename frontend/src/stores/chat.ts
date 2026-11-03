@@ -7,9 +7,11 @@ import type {
   Conditions,
   SavedMonitor,
 } from '@/api/contracts'
-import type { Listing } from '@/api/types'
+import type { Inspection, Listing, ListingDetail } from '@/api/types'
 import { agentApi } from '@/api/services/agent'
+import { listingApi } from '@/api/services/listings'
 import { conditionsFor } from '@/lib/conditions'
+import { stateLabel } from '@/lib/watchlist'
 import { useToast } from '@/composables/useToast'
 
 const HISTORY_KEY = 'rentradar.history'
@@ -40,7 +42,8 @@ export const useChatStore = defineStore('chat', () => {
   const cards = ref<Listing[]>([])
   const conditions = ref<Conditions>(conditionsFor(''))
   const activeTab = ref<'recs' | 'compare' | 'map'>('recs')
-  const detail = ref<Listing | null>(null)
+  const detail = ref<ListingDetail | null>(null)
+  const detailLoading = ref(false)
   const sheetOpen = ref(false)
   const loading = ref(false)
   const amapUsed = ref(0)
@@ -115,6 +118,7 @@ export const useChatStore = defineStore('chat', () => {
     conditions.value = conditionsFor('')
     activeTab.value = 'recs'
     detail.value = null
+    detailLoading.value = false
     sheetOpen.value = false
     loading.value = false
     amapUsed.value = 0
@@ -248,12 +252,105 @@ export const useChatStore = defineStore('chat', () => {
     compareIds.value = next
   }
 
+  async function loadDetail(id: number) {
+    detailLoading.value = true
+    try {
+      const full = await listingApi.detail(id)
+      if (detail.value?.id === id) detail.value = full
+      return full
+    } catch {
+      toast('详情加载失败，请稍后重试')
+      return null
+    } finally {
+      detailLoading.value = false
+    }
+  }
+
   function openDetail(listing: Listing) {
-    detail.value = listing
+    detail.value = {
+      ...listing,
+      source_code: '',
+      city_code: '',
+      source_listing_id: '',
+      orientation: null,
+      floor: null,
+      snapshots: [],
+      events: [],
+      delivery_probes: [],
+      watch_state: null,
+      watch_note: null,
+      watch_updated_at: null,
+      inspection: { items: {}, note: null, photos: [], updated_at: null },
+      commute_stats: null,
+    }
+    void loadDetail(listing.id)
+  }
+
+  function openDetailById(id: number) {
+    detail.value = {
+      id,
+      title: '',
+      community_name: '',
+      district: null,
+      layout: null,
+      area: null,
+      rent: null,
+      score: null,
+      score_reasons: {},
+      image_url: null,
+      tags: [],
+      agent_type: null,
+      status: 'active',
+      url: '',
+      source_code: '',
+      city_code: '',
+      source_listing_id: '',
+      orientation: null,
+      floor: null,
+      snapshots: [],
+      events: [],
+      delivery_probes: [],
+      watch_state: null,
+      watch_note: null,
+      watch_updated_at: null,
+      inspection: { items: {}, note: null, photos: [], updated_at: null },
+      commute_stats: null,
+    }
+    void loadDetail(id)
   }
 
   function closeDetail() {
     detail.value = null
+    detailLoading.value = false
+  }
+
+  async function refreshDetail() {
+    if (detail.value) await loadDetail(detail.value.id)
+  }
+
+  async function setDetailState(state: string, note?: string | null) {
+    if (!detail.value) return
+    const id = detail.value.id
+    try {
+      await listingApi.setState(id, state, note ?? detail.value.watch_note)
+      await loadDetail(id)
+      toast(`已更新为「${stateLabel(state)}」`)
+    } catch {
+      toast('看房状态更新失败')
+    }
+  }
+
+  async function saveDetailInspection(payload: Pick<Inspection, 'items' | 'note' | 'photos'>) {
+    if (!detail.value) return false
+    try {
+      const saved = await listingApi.saveInspection(detail.value.id, payload)
+      detail.value.inspection = saved
+      toast('看房记录已保存')
+      return true
+    } catch {
+      toast('看房记录保存失败')
+      return false
+    }
   }
 
   function openSheet() {
@@ -325,6 +422,7 @@ export const useChatStore = defineStore('chat', () => {
     conditions,
     activeTab,
     detail,
+    detailLoading,
     sheetOpen,
     loading,
     amapUsed,
@@ -347,7 +445,11 @@ export const useChatStore = defineStore('chat', () => {
     reset,
     toggleCompare,
     openDetail,
+    openDetailById,
     closeDetail,
+    refreshDetail,
+    setDetailState,
+    saveDetailInspection,
     openSheet,
     closeSheet,
     openHistory,

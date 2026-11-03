@@ -1,4 +1,3 @@
-from collections import Counter
 from datetime import datetime
 from statistics import mean, median
 from zoneinfo import ZoneInfo
@@ -9,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import (
     City,
     Community,
-    CommuteSample,
     DeliveryProbe,
     Job,
     JobStatus,
@@ -21,7 +19,7 @@ from app.models import (
     Source,
     Task,
 )
-from app.services import agent_service, listing_service, task_service
+from app.services import agent_service, commute_service, listing_service, task_service
 from app.services.settings_service import (
     destination_key,
     get_commute_destination,
@@ -40,21 +38,12 @@ def _period() -> str:
     return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m")
 
 
-async def _latest_commute(db: AsyncSession) -> tuple[dict[int, int], Counter[int]]:
+async def _latest_commute(db: AsyncSession) -> dict[int, dict]:
     destination = await get_commute_destination(db)
     key = destination_key(destination)
-    stmt = select(
-        CommuteSample.community_id, CommuteSample.duration_s, CommuteSample.fetched_at
-    ).order_by(CommuteSample.community_id, CommuteSample.fetched_at.desc())
-    if key:
-        stmt = stmt.where(CommuteSample.destination_key == key)
-    rows = (await db.execute(stmt)).all()
-    latest: dict[int, int] = {}
-    counts: Counter[int] = Counter()
-    for community_id, duration_s, _ in rows:
-        counts[community_id] += 1
-        latest.setdefault(community_id, duration_s)
-    return latest, counts
+    if key is None:
+        return {}
+    return await commute_service.bulk_stats(db, key, destination=destination)
 
 
 async def _community_rows(db: AsyncSession) -> list[dict]:
@@ -72,9 +61,10 @@ async def _community_rows(db: AsyncSession) -> list[dict]:
             .order_by(Community.id)
         )
     ).all()
-    latest, samples = await _latest_commute(db)
+    latest = await _latest_commute(db)
     result = []
     for community, listing_count, poi in rows:
+        stats = latest.get(community.id)
         result.append(
             {
                 "id": community.id,
@@ -86,8 +76,12 @@ async def _community_rows(db: AsyncSession) -> list[dict]:
                 "dining_count": poi.dining_count if poi else None,
                 "daily_count": poi.daily_count if poi else None,
                 "nightlife_count": poi.nightlife_count if poi else None,
-                "commute_min": round(latest[community.id] / 60) if community.id in latest else None,
-                "samples": samples.get(community.id, 0),
+                "commute_min": round(stats["p50_min"]) if stats else None,
+                "commute_p50": stats["p50_min"] if stats else None,
+                "commute_p90": stats["p90_min"] if stats else None,
+                "commute_buckets": stats["bucket_count"] if stats else 0,
+                "commute_static": stats["static"] if stats else None,
+                "samples": stats["samples"] if stats else 0,
             }
         )
     return result
@@ -110,8 +104,9 @@ async def get_stats(db: AsyncSession, communities: list[dict] | None = None) -> 
         await db.execute(select(Listing.community_id).where(Listing.score.is_not(None)))
     ).scalars().all()
     geo_ids = {item["id"] for item in communities if item["lng"] is not None}
-    _, sample_counts = await _latest_commute(db)
-    sample_ids = set(sample_counts)
+    commute_stats = await _latest_commute(db)
+    sample_ids = set(commute_stats)
+    multi_bucket = sum(1 for item in commute_stats.values() if item["multi_bucket"])
     scored_geo = sum(1 for cid in scored_communities if cid in geo_ids)
     scored_commute = sum(1 for cid in scored_communities if cid in sample_ids)
     listings_no_geo = sum(
@@ -143,15 +138,10 @@ async def get_stats(db: AsyncSession, communities: list[dict] | None = None) -> 
         "max_score": max(scores) if scores else 0,
         "communities": len(communities),
         "geocoded": len(geo_ids),
-        "commute_samples": int(
-            await db.scalar(select(func.count()).select_from(CommuteSample)) or 0
-        ),
-        "commute_communities": int(
-            await db.scalar(
-                select(func.count(func.distinct(CommuteSample.community_id)))
-            )
-            or 0
-        ),
+        "commute_samples": sum(item["samples"] for item in commute_stats.values()),
+        "commute_p50_communities": len(commute_stats),
+        "commute_multi_bucket": multi_bucket,
+        "commute_communities": len(commute_stats),
         "poi_cache": sum(1 for item in communities if item["dining_count"] is not None),
         "probes": int(await db.scalar(select(func.count()).select_from(DeliveryProbe)) or 0),
         "listings_no_geo": listings_no_geo,
@@ -267,7 +257,7 @@ async def overview(db: AsyncSession) -> dict:
 
 
 async def candidates(db: AsyncSession, limit: int = 200) -> list[dict]:
-    latest, samples = await _latest_commute(db)
+    latest = await _latest_commute(db)
     rows = (
         await db.execute(
             select(Listing, Source.code, City.code, Community, PoiCache)
@@ -290,13 +280,14 @@ async def candidates(db: AsyncSession, limit: int = 200) -> list[dict]:
             and community.lat is not None
         )
         item["has_geo"] = has_geo
-        item["has_commute"] = listing.community_id in latest
-        item["commute_min"] = (
-            round(latest[listing.community_id] / 60)
-            if listing.community_id in latest
-            else None
-        )
-        item["samples"] = samples.get(listing.community_id, 0) if listing.community_id else 0
+        stats = latest.get(listing.community_id) if listing.community_id else None
+        item["has_commute"] = stats is not None
+        item["commute_min"] = round(stats["p50_min"]) if stats else None
+        item["commute_p50"] = stats["p50_min"] if stats else None
+        item["commute_p90"] = stats["p90_min"] if stats else None
+        item["commute_buckets"] = stats["bucket_count"] if stats else 0
+        item["commute_static"] = stats["static"] if stats else None
+        item["samples"] = stats["samples"] if stats else 0
         item["dining_count"] = poi.dining_count if poi else None
         item["daily_count"] = poi.daily_count if poi else None
         item["nightlife_count"] = poi.nightlife_count if poi else None
@@ -313,6 +304,134 @@ async def coverage(db: AsyncSession) -> dict:
         reverse=True,
     )[:5]
     return {"stats": stats, "communities": communities, "priority": priority}
+
+
+def build_crawl_coverage(
+    task_id: int | None,
+    task_name: str | None,
+    filters: dict,
+    latest_by_condition: dict[str, object],
+    counts: dict[str, int],
+) -> dict:
+    conditions = [
+        str(item).strip()
+        for item in (filters or {}).get("shard_conditions") or []
+        if str(item).strip()
+    ]
+    page_size = int((filters or {}).get("page_size") or 30)
+    labels = list((filters or {}).get("shard_labels") or [])
+    shards = []
+    for index, condition in enumerate(conditions):
+        scope = f"line:{condition}"
+        station = str(labels[index]) if index < len(labels) else condition
+        run = latest_by_condition.get(condition)
+        stats = dict(getattr(run, "stats", None) or {}) if run is not None else {}
+        total = stats.get("total")
+        pages = stats.get("pages")
+        complete = bool(
+            run is not None
+            and total is not None
+            and int(pages or 0) * page_size >= int(total)
+        )
+        shards.append(
+            {
+                "condition": condition,
+                "station": station,
+                "scope": scope,
+                "listings": counts.get(scope, 0),
+                "last_run": (
+                    {
+                        "id": getattr(run, "id", None),
+                        "status": getattr(run, "status", None),
+                        "started_at": getattr(run, "started_at", None),
+                        "finished_at": getattr(run, "finished_at", None),
+                        "pages": pages,
+                        "fetched": stats.get("fetched"),
+                        "total": total,
+                        "duplicates": stats.get("duplicates"),
+                        "suspect_skipped": bool(stats.get("suspect_skipped")),
+                    }
+                    if run is not None
+                    else None
+                ),
+                "complete": complete,
+            }
+        )
+    scanned = [item["last_run"] for item in shards if item["last_run"]]
+    return {
+        "task_id": task_id,
+        "task_name": task_name,
+        "line": (filters or {}).get("shard_line"),
+        "shard_cursor": int((filters or {}).get("shard_cursor") or 0),
+        "shards": shards,
+        "summary": {
+            "shards": len(shards),
+            "listings": sum(item["listings"] for item in shards),
+            "complete": sum(1 for item in shards if item["complete"]),
+            "scanned": len(scanned),
+            "last_scan_at": max(
+                (item["started_at"] for item in scanned if item["started_at"]),
+                default=None,
+            ),
+        },
+    }
+
+
+async def crawl_coverage(db: AsyncSession, task_id: int | None = None) -> dict:
+    tasks = (
+        (await db.execute(select(Task).order_by(Task.id)))
+        .scalars()
+        .all()
+    )
+    task = None
+    if task_id is not None:
+        task = next((item for item in tasks if item.id == task_id), None)
+    else:
+        task = next(
+            (
+                item
+                for item in tasks
+                if (item.filters or {}).get("shard_conditions")
+            ),
+            tasks[0] if tasks else None,
+        )
+    if task is None:
+        return build_crawl_coverage(None, None, {}, {}, {})
+    filters = dict(task.filters or {})
+    conditions = [
+        str(item).strip()
+        for item in filters.get("shard_conditions") or []
+        if str(item).strip()
+    ]
+    scopes = [f"line:{item}" for item in conditions]
+    counts: dict[str, int] = {}
+    if scopes:
+        rows = (
+            await db.execute(
+                select(Listing.raw["scope"].astext, func.count())
+                .where(Listing.raw["scope"].astext.in_(scopes))
+                .group_by(Listing.raw["scope"].astext)
+            )
+        ).all()
+        counts = {str(scope): int(count) for scope, count in rows}
+    runs = (
+        (
+            await db.execute(
+                select(Run)
+                .where(Run.task_id == task.id)
+                .order_by(Run.started_at.desc())
+                .limit(500)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    latest_by_condition: dict[str, object] = {}
+    for run in runs:
+        line_value = str((run.stats or {}).get("line") or "")
+        if line_value and line_value not in latest_by_condition:
+            latest_by_condition[line_value] = run
+    return build_crawl_coverage(task.id, task.name, filters, latest_by_condition, counts)
 
 
 async def quality(db: AsyncSession) -> dict:

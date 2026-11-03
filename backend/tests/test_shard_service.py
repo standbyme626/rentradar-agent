@@ -3,8 +3,10 @@ from types import SimpleNamespace
 import pytest
 
 from app.services.shard_service import (
+    apply_shard_plan,
     crawl_commands,
     fetch_line_total,
+    next_shard,
     probe_shards,
 )
 from app.sources.base import CaptchaRequiredError, SourceError
@@ -150,3 +152,34 @@ def test_crawl_commands_respect_completeness():
     assert commands[2]["command"] == (
         "python -m app.cli crawl --task-id 7 --line c --pages 1 --transport api"
     )
+
+
+def test_next_shard_rotates_and_wraps():
+    filters = {"shard_conditions": ["a", "b", "c"], "shard_cursor": 1}
+    line, updated = next_shard(filters)
+    assert line == "b"
+    assert updated["shard_cursor"] == 2
+    assert updated["shard_conditions"] == ["a", "b", "c"]
+
+    line, updated = next_shard({"shard_conditions": ["a", "b"], "shard_cursor": 1})
+    assert line == "b"
+    assert updated["shard_cursor"] == 0
+
+
+def test_next_shard_keeps_line_scan_when_no_plan():
+    filters = {"line": "li110460696"}
+    line, updated = next_shard(filters)
+    assert line == ""
+    assert updated == filters
+
+
+def test_apply_shard_plan_sets_conditions_and_cursor():
+    filters = {"transport": "api", "line": "li110460696"}
+    updated = apply_shard_plan(
+        filters, ["li1s1", "li1s2"], "li1", labels=["站一", "站二"]
+    )
+    assert updated["transport"] == "api"
+    assert updated["shard_conditions"] == ["li1s1", "li1s2"]
+    assert updated["shard_labels"] == ["站一", "站二"]
+    assert updated["shard_cursor"] == 0
+    assert updated["shard_line"] == "li1"

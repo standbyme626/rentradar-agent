@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -17,16 +17,7 @@ router = APIRouter(
     prefix="/api/listings", tags=["listings"], dependencies=[Depends(get_current_user)]
 )
 
-CHECKLIST_KEYS = [
-    "soundproofing",
-    "leak",
-    "water",
-    "power",
-    "network",
-    "delivery",
-    "property",
-    "elevator",
-]
+CHECKLIST_KEYS = listing_service.CHECKLIST_KEYS
 
 
 @router.get("", response_model=ListingPage)
@@ -57,6 +48,30 @@ async def list_listings(
         page_size=page_size,
     )
     return ListingPage(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/watchlist")
+async def list_watchlist(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    return await listing_service.watchlist_entries(db, user.id)
+
+
+@router.get("/watchlist/export.csv")
+async def export_watchlist(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    entries = await listing_service.watchlist_entries(db, user.id)
+    content = "\ufeff" + listing_service.watchlist_csv(entries)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="rentradar-watchlist.csv"'
+        },
+    )
 
 
 @router.get("/{listing_id}", response_model=ListingDetail)

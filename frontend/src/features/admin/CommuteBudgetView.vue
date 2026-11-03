@@ -24,8 +24,9 @@ const bucketOptions = ['07:30', '08:00', '08:30', '09:00']
 const modeOptions = ['公交/地铁', '驾车', '步行接驳', '骑行接驳']
 
 const calls = computed(() => (Number(count.value) || 0) * buckets.value.length * modes.value.length)
-const remaining = computed(() => 4124 - calls.value)
-const over = computed(() => remaining.value < 0)
+const unsupportedModes = computed(() => modes.value.filter((item) => item !== '公交/地铁'))
+const over = computed(() => !buckets.value.length || !modes.value.includes('公交/地铁'))
+const multiBucket = computed(() => stats.value.commute_multi_bucket ?? 0)
 
 const noGeo = computed(() => stats.value.communities - stats.value.geocoded)
 
@@ -76,7 +77,7 @@ async function generateGeocodePlan() {
 <template>
   <div>
     <h2 class="text-[20px] font-bold tracking-tight">通勤与预算</h2>
-    <p class="mt-1 text-[12.5px] text-muted">先用调用次数算清楚，再决定跑多少。全量预计算是额度杀手，按需只算候选。</p>
+    <p class="mt-1 text-[12.5px] text-muted">通勤走深圳地铁官方（零额度）；4 个时段用于记录采样口径，SZMC 为时刻表最短耗时，同 OD 不同时段结果相同。</p>
     <div v-if="loading" class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2 text-[10.5px] text-muted">覆盖数据加载中…</div>
     <div v-else-if="error" class="mt-3 rounded-xl border border-coral/25 bg-coral-soft px-3.5 py-2 text-[10.5px] text-coral">
       {{ error }}
@@ -85,11 +86,11 @@ async function generateGeocodePlan() {
 
     <div class="mt-4 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
       <section class="card p-4">
-        <h3 class="panel-title">采样预算器 <span class="hint">高德调用估算</span></h3>
+        <h3 class="panel-title">采样预算器 <span class="hint">SZMC 零额度</span></h3>
         <div class="mt-3 space-y-3">
           <div>
-            <label class="label">起点</label>
-            <input class="input" value="深圳会展中心（示例地址）" readonly />
+            <label class="label">方向</label>
+            <input class="input" value="小区 → 公司（目的地址在设置里配置）" readonly />
           </div>
           <div>
             <label class="label">候选小区数</label>
@@ -139,10 +140,10 @@ async function generateGeocodePlan() {
             <span class="text-[26px] font-bold leading-7" :class="over ? 'text-coral' : 'text-forest'">{{ calls }}</span>
           </div>
           <div class="mt-1 flex justify-between text-[11px] text-muted">
-            <span>剩余额度</span><b class="text-ink">{{ remaining }}</b>
+            <span>SZMC 额度消耗</span><b class="text-ink">0</b>
           </div>
           <div class="mt-0.5 flex justify-between text-[11px] text-muted">
-            <span>缓存命中（7 天）</span><b class="text-ink">0</b>
+            <span>缓存命中（7 天/时段）</span><b class="text-ink">按分片跳过</b>
           </div>
         </div>
 
@@ -150,11 +151,14 @@ async function generateGeocodePlan() {
           class="mt-3 rounded-xl border px-3.5 py-2.5 text-[10.5px] leading-5"
           :class="over ? 'border-coral/30 bg-coral-soft text-coral' : 'border-amber/25 bg-amber-soft text-amber'"
         >
-          <template v-if="over">超出剩余额度，请减少候选或时段。</template>
+          <template v-if="over">至少选择一个时段和「公交/地铁」；其他方式暂未接入。</template>
           <template v-else>
-            按 {{ count }} 个小区 × {{ buckets.length }} 时段 × {{ modes.length }} 种方式 = {{ calls }} 次。若小区无坐标，另加 1–2 次地理编码/小区。
+            按 {{ count }} 个小区 × {{ buckets.length }} 时段 = {{ calls }} 次地铁查询（零额度）。SZMC 无出发时间参数，结果不会随时段变化。
           </template>
         </div>
+        <p v-if="unsupportedModes.length" class="mt-1 text-[10px] text-coral">
+          未接入的方式已忽略：{{ unsupportedModes.join(' / ') }}。
+        </p>
 
         <div class="mt-3 flex flex-wrap gap-2">
           <button class="btn-primary" :disabled="over || !calls || busy" @click="startSampling">
@@ -178,8 +182,13 @@ async function generateGeocodePlan() {
             <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sand"><div class="h-full rounded-full bg-forest" :style="{ width: `${(stats.commute_communities / stats.communities) * 100}%` }" /></div>
           </div>
           <div>
-            <div class="flex justify-between text-[11px] text-muted"><span>p50 / p90 多时段</span><b class="text-ink">0 / {{ stats.communities }}</b></div>
-            <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sand"><div class="h-full w-0 rounded-full bg-coral" /></div>
+            <div class="flex justify-between text-[11px] text-muted">
+              <span>p50 / p90 多时段（≥3 时段）</span>
+              <b class="text-ink">{{ multiBucket }} / {{ stats.communities }}</b>
+            </div>
+            <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sand">
+              <div class="h-full rounded-full bg-forest" :style="{ width: `${(multiBucket / Math.max(1, stats.communities)) * 100}%` }" />
+            </div>
           </div>
           <div>
             <div class="flex justify-between text-[11px] text-muted"><span>POI 封顶（餐饮 600）</span><b class="text-ink">{{ stats.poi_capped }} 个小区</b></div>
@@ -188,7 +197,7 @@ async function generateGeocodePlan() {
         </div>
 
         <div class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-2.5 text-[10.5px] leading-5 text-forest">
-          当前 {{ stats.commute_samples }} 条通勤样本，全部是单次 transit；换公司地址会按 destination 失效，但地理编码与 POI 不会重跑。
+          当前 {{ stats.commute_samples }} 条通勤样本，共 {{ stats.commute_p50_communities ?? stats.commute_communities }} 个小区有 p50；SZMC 为时刻表估算，p90 仅反映样本分布，不代表实时拥堵。
         </div>
 
         <h3 class="panel-title mt-4">优先补的小区 <span class="hint">按房源数</span></h3>
@@ -205,7 +214,7 @@ async function generateGeocodePlan() {
     <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
       <AdminKpi label="小区" :value="stats.communities" sub="5 号线任务下" />
       <AdminKpi label="有坐标" :value="stats.geocoded" sub="地理编码永久缓存" tone="green" />
-      <AdminKpi label="有通勤样本" :value="stats.commute_communities" sub="单次采样，待 p50/p90" tone="amber" />
+      <AdminKpi label="有通勤样本" :value="stats.commute_communities" sub="p50 / p90 已接入" tone="amber" />
       <AdminKpi label="无坐标" :value="noGeo" sub="不参与通勤评分" tone="coral" />
     </div>
 
@@ -219,8 +228,8 @@ async function generateGeocodePlan() {
               <th class="px-3 py-2.5 font-semibold">区域</th>
               <th class="px-3 py-2.5 font-semibold">房源</th>
               <th class="px-3 py-2.5 font-semibold">坐标</th>
-              <th class="px-3 py-2.5 font-semibold">通勤</th>
-              <th class="px-3 py-2.5 font-semibold">样本</th>
+              <th class="px-3 py-2.5 font-semibold">通勤 p50 / p90</th>
+              <th class="px-3 py-2.5 font-semibold">时段 / 样本</th>
               <th class="px-3 py-2.5 font-semibold">POI 餐饮/日常/夜宵</th>
               <th class="px-3 py-2.5 font-semibold">状态</th>
             </tr>
@@ -231,8 +240,14 @@ async function generateGeocodePlan() {
               <td class="px-3 py-2.5 text-muted">{{ item.district || '—' }}</td>
               <td class="px-3 py-2.5">{{ item.listings }}</td>
               <td class="px-3 py-2.5"><span :class="item.lng != null ? 'tag-green' : 'tag-coral'">{{ item.lng != null ? '有' : '无' }}</span></td>
-              <td class="px-3 py-2.5">{{ item.commute_min != null ? `${item.commute_min} 分钟` : '—' }}</td>
-              <td class="px-3 py-2.5">{{ item.samples }}</td>
+              <td class="px-3 py-2.5">
+                <template v-if="item.commute_p50 != null">
+                  {{ item.commute_p50 }} / {{ item.commute_p90 ?? '—' }} 分钟
+                  <span v-if="item.commute_static" class="ml-1 text-[9px] text-faint">时刻表</span>
+                </template>
+                <template v-else>{{ item.commute_min != null ? `${item.commute_min} 分钟` : '—' }}</template>
+              </td>
+              <td class="px-3 py-2.5">{{ item.commute_buckets ?? 0 }} / {{ item.samples }}</td>
               <td class="mono px-3 py-2.5 text-muted">{{ item.dining_count ?? '—' }} / {{ item.daily_count ?? '—' }} / {{ item.nightlife_count ?? '—' }}</td>
               <td class="px-3 py-2.5">
                 <span v-if="item.lng != null && item.samples" class="tag-green">已富化</span>
@@ -244,7 +259,7 @@ async function generateGeocodePlan() {
         </table>
       </div>
       <p class="mt-3 text-[10.5px] leading-5 text-faint">
-        每次通勤 = 1 次高德 transit；地理编码 1–2 次、POI 3 次（仅首次或 30 天过期）。当前关键问题：全量跑而不是只跑候选。另：高德 around 在密集区餐饮 count 封顶 600，密度区分度不足。
+        每次通勤 = 1 次深圳地铁官方查询（零额度）；地理编码/POI 仍按缓存和额度控制。只对 Top 候选跑，不做全量。SZMC 只覆盖 3km 内有地铁站的小区，无站时明确「无地铁样本」。
       </p>
     </section>
   </div>

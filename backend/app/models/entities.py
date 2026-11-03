@@ -348,6 +348,10 @@ class CommuteSample(Base):
     distance_m: Mapped[int | None] = mapped_column(Integer)
     transfers: Mapped[int | None] = mapped_column(Integer)
     provider: Mapped[str] = mapped_column(String(16), default="amap")
+    depart_bucket: Mapped[str | None] = mapped_column(String(8))
+    direction: Mapped[str] = mapped_column(
+        String(32), default="community_to_destination", server_default="community_to_destination"
+    )
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     raw: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
 

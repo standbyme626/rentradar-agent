@@ -16,6 +16,7 @@ from app.services.enrich_service import enrich_task, rescore_task
 from app.services.seed_service import seed
 from app.services.settings_service import set_commute_destination
 from app.services.shard_service import (
+    apply_shard_plan,
     crawl_commands,
     fetch_line_total,
     normalize_page_size,
@@ -348,6 +349,51 @@ async def cmd_shards(args) -> None:
         _print_shard_report(output)
 
 
+async def cmd_apply_shards(args) -> None:
+    try:
+        config = await fetch_filter_config(args.city)
+        plan = build_line_shards(config, args.line)
+    except SourceError as exc:
+        print({"error": str(exc)})
+        return
+    conditions = [item["condition"] for item in plan["shards"]]
+    if args.stations > 0:
+        conditions = conditions[: args.stations]
+    async with SessionLocal() as db:
+        task = await db.get(Task, args.task_id)
+        if task is None:
+            print({"error": f"task {args.task_id} not found"})
+            return
+        filters = dict(task.filters or {})
+        schedule = dict(task.schedule or {})
+        if args.clear:
+            for key in ("shard_conditions", "shard_cursor", "shard_line", "shard_labels"):
+                filters.pop(key, None)
+        else:
+            labels = [
+                item["name"] for item in plan["shards"][: args.stations or None]
+            ]
+            filters = apply_shard_plan(
+                filters, conditions, plan["line_condition"], labels=labels
+            )
+            schedule.update(
+                {"fast_minutes": args.fast_minutes, "slow_minutes": args.slow_minutes}
+            )
+        task.filters = filters
+        task.schedule = schedule
+        await db.commit()
+    print(
+        {
+            "task_id": args.task_id,
+            "line": plan["line_name"],
+            "cleared": args.clear,
+            "shard_conditions": len(conditions) if not args.clear else 0,
+            "fast_minutes": schedule.get("fast_minutes"),
+            "slow_minutes": schedule.get("slow_minutes"),
+        }
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rentradar")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -414,11 +460,31 @@ def main() -> None:
         "--probe", action="store_true", help="call the App API to measure totals and de-duplication"
     )
     shards.add_argument("--json", action="store_true")
+    apply_shards = sub.add_parser(
+        "apply-shards", help="store a station-shard plan on a crawl task"
+    )
+    apply_shards.add_argument("--task-id", type=int, required=True)
+    apply_shards.add_argument("--line", required=True, help="line id/name/pinyin, e.g. 5号线")
+    apply_shards.add_argument("--city", default="sz")
+    apply_shards.add_argument("--stations", type=int, default=0, help="first N stations; 0 = all")
+    apply_shards.add_argument(
+        "--fast-minutes", type=int, default=10, help="fast crawl interval after applying"
+    )
+    apply_shards.add_argument(
+        "--slow-minutes", type=int, default=180, help="slow crawl interval after applying"
+    )
+    apply_shards.add_argument(
+        "--clear", action="store_true", help="remove the shard plan instead of applying it"
+    )
     args = parser.parse_args()
     if args.command == "probe" and not (args.community_id or args.listing_id):
         parser.error("probe requires --community-id or --listing-id")
     if args.command == "shards" and (args.stations < 0 or args.pages < 0):
         parser.error("shards requires --stations >= 0 and --pages >= 0")
+    if args.command == "apply-shards" and (
+        args.stations < 0 or args.fast_minutes < 1 or args.slow_minutes < 1
+    ):
+        parser.error("apply-shards requires --stations >= 0 and positive intervals")
     if args.command == "seed":
         asyncio.run(cmd_seed())
     elif args.command == "check":
@@ -437,6 +503,8 @@ def main() -> None:
         asyncio.run(cmd_probe(args))
     elif args.command == "shards":
         asyncio.run(cmd_shards(args))
+    elif args.command == "apply-shards":
+        asyncio.run(cmd_apply_shards(args))
     elif args.command == "create-user":
         asyncio.run(cmd_create_user(args))
     elif args.command == "set-password":

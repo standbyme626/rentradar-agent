@@ -1,3 +1,6 @@
+import csv
+import io
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,12 +8,26 @@ from app.models import (
     City,
     DeliveryProbe,
     Event,
+    Inspection,
     Listing,
     ListingStatus,
     Snapshot,
     Source,
     Watchlist,
 )
+from app.services import commute_service
+from app.services.settings_service import destination_key, get_commute_destination
+
+CHECKLIST_KEYS = [
+    "soundproofing",
+    "leak",
+    "water",
+    "power",
+    "network",
+    "delivery",
+    "property",
+    "elevator",
+]
 
 
 def _listing_dict(listing: Listing, source_code: str, city_code: str) -> dict:
@@ -100,6 +117,20 @@ async def list_listings(
     ], total
 
 
+def _inspection_dict(record: Inspection | None) -> dict:
+    items = {key: False for key in CHECKLIST_KEYS}
+    if record is None:
+        return {"items": items, "note": None, "photos": [], "updated_at": None}
+    data = record.data or {}
+    items.update({key: bool(value) for key, value in (data.get("items") or {}).items()})
+    return {
+        "items": items,
+        "note": data.get("note"),
+        "photos": data.get("photos") or [],
+        "updated_at": record.updated_at,
+    }
+
+
 async def get_listing_detail(
     db: AsyncSession, listing_id: int, user_id: int
 ) -> dict | None:
@@ -138,11 +169,15 @@ async def get_listing_detail(
         .scalars()
         .all()
     )
-    watch_state = await db.scalar(
-        select(Watchlist.state).where(
-            Watchlist.user_id == user_id, Watchlist.listing_id == listing_id
+    watch = await db.get(Watchlist, (user_id, listing_id))
+    inspection = await db.get(Inspection, (listing_id, user_id))
+    destination = await get_commute_destination(db)
+    key = destination_key(destination)
+    commute = None
+    if listing.community_id is not None and key is not None:
+        commute = await commute_service.community_stats(
+            db, listing.community_id, key, destination=destination
         )
-    )
     probes = []
     if listing.community_id is not None:
         probes = (
@@ -194,7 +229,11 @@ async def get_listing_detail(
                 }
                 for item in events
             ],
-            "watch_state": watch_state,
+            "watch_state": watch.state if watch is not None else None,
+            "watch_note": watch.note if watch is not None else None,
+            "watch_updated_at": watch.updated_at if watch is not None else None,
+            "inspection": _inspection_dict(inspection),
+            "commute_stats": commute,
         }
     )
     return data
@@ -216,3 +255,101 @@ async def set_watch_state(
         entry.note = note
     await db.commit()
     return state
+
+
+async def watchlist_entries(db: AsyncSession, user_id: int) -> list[dict]:
+    rows = (
+        await db.execute(
+            select(Watchlist, Listing, Source.code, City.code)
+            .join(Listing, Watchlist.listing_id == Listing.id)
+            .join(Source, Listing.source_id == Source.id)
+            .join(City, Listing.city_id == City.id)
+            .where(Watchlist.user_id == user_id)
+            .order_by(Watchlist.updated_at.desc(), Watchlist.listing_id.desc())
+        )
+    ).all()
+    inspection_rows = (
+        (
+            await db.execute(
+                select(Inspection).where(Inspection.user_id == user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    inspections = {item.listing_id: item for item in inspection_rows}
+    result = []
+    for entry, listing, source_code, city_code in rows:
+        item = _listing_dict(listing, source_code, city_code)
+        result.append(
+            {
+                "listing": item,
+                "state": entry.state,
+                "note": entry.note,
+                "updated_at": entry.updated_at,
+                "inspection": _inspection_dict(inspections.get(listing.id)),
+            }
+        )
+    return result
+
+
+def watchlist_csv(entries: list[dict]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "房源ID",
+            "小区",
+            "区域",
+            "户型",
+            "面积㎡",
+            "月租",
+            "评分",
+            "状态",
+            "备注",
+            "检查通过项",
+            "检查备注",
+            "照片数",
+            "上架时间",
+            "更新时间",
+            "链接",
+        ]
+    )
+    labels = {
+        "soundproofing": "隔音",
+        "leak": "漏水",
+        "water": "水电",
+        "power": "供电",
+        "network": "网络",
+        "delivery": "外卖",
+        "property": "物业",
+        "elevator": "电梯",
+    }
+    for item in entries:
+        listing = item["listing"]
+        inspection = item["inspection"] or {}
+        passed = [
+            labels.get(key, key)
+            for key, value in (inspection.get("items") or {}).items()
+            if value
+        ]
+        writer.writerow(
+            [
+                listing["id"],
+                listing.get("community_name") or "",
+                listing.get("district") or "",
+                listing.get("layout") or "",
+                listing.get("area") if listing.get("area") is not None else "",
+                listing.get("rent") if listing.get("rent") is not None else "",
+                listing.get("score") if listing.get("score") is not None else "",
+                item["state"],
+                item.get("note") or "",
+                " / ".join(passed),
+                inspection.get("note") or "",
+                len(inspection.get("photos") or []),
+                listing.get("first_seen_at").isoformat() if listing.get("first_seen_at") else "",
+                item["updated_at"].isoformat() if item.get("updated_at") else "",
+                listing.get("url") or "",
+            ]
+        )
+    return buffer.getvalue()
