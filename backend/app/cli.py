@@ -255,6 +255,11 @@ def _print_shard_report(output: dict) -> None:
                 f"线路 total={line_total}，分片合计={summary['scope_total']}，"
                 f"{'抽样' if sampled else '线路'}覆盖率={_pct(summary['coverage_vs_line'])}"
             )
+            if summary["scope_total"] > line_total:
+                print(
+                    "注意：站点条件会重叠，分片合计大于线路 total；"
+                    "真实覆盖以线路覆盖率为准。"
+                )
         print(
             f"完整分片 {summary['complete_shards']}/{summary['shards']}，"
             f"预计总页数 {summary['expected_pages']}"

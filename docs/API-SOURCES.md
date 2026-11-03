@@ -91,6 +91,7 @@ cd backend
 - `--probe` 实际请求 App 列表接口，输出每站 total / 已抓 / 跨站去重（`house_code`）/ 缺页原因；不写库。
 - `--pages 0` 按每站 total 自动抓全（仍受 3000 条 offset 上限约束）。
 - 只有探测结果为「完整」的分片才建议加 `--full-scan`，避免不完整范围误标 `suspect`。
+- 站点条件会重叠：2026-11-04 按每站 1 页抽查，37 站 `total` 合计 8,828，线路 `total` 6,329；因此评估真实覆盖用 `去重后 / 线路 total`（`coverage_vs_line`），`scope_total` 只表示分片规模。
 - 站点条件依赖 `feed_query_id` 按分片重置；`beike_api.BeikeAPIFetcher.reset_condition()` 负责切换分片前清空翻页游标。
 
 **图片**
