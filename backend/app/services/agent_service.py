@@ -1,28 +1,18 @@
+import asyncio
+import json
 import re
 import time
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.models import (
-    AgentMonitor,
-    AgentSession,
-    City,
-    Listing,
-    ListingStatus,
-    PoiCache,
-    Source,
-)
-from app.services import commute_service, listing_service, llm_service
-from app.services.settings_service import (
-    destination_key,
-    get_admin_settings,
-    get_commute_destination,
-)
+from app.models import AgentMonitor, AgentSession, AgentToolCall
+from app.services import agent_tools, guardrails, llm_service
+from app.services.settings_service import get_admin_settings
 
 log = get_logger("agent")
 
@@ -98,12 +88,22 @@ def _extract_district(text: str) -> str | None:
     return None
 
 
+def _has_positive(text: str, word: str) -> bool:
+    """True when the tag appears without a nearby negation (不要/无/没有)."""
+    for match in re.finditer(re.escape(word), text):
+        prefix = text[max(0, match.start() - 4) : match.start()]
+        if any(item in prefix for item in ("不", "无", "没", "免")):
+            continue
+        return True
+    return False
+
+
 def _extract_must(text: str) -> list[str]:
     must = []
     for tag in ("电梯", "近地铁", "精装"):
-        if tag in text:
+        if _has_positive(text, tag):
             must.append(tag)
-    if "南向" in text or "朝南" in text:
+    if _has_positive(text, "南向") or _has_positive(text, "朝南"):
         must.append("南向")
     return must
 
@@ -171,15 +171,6 @@ def _ui_conditions(conditions: dict) -> dict:
         "isLong": bool(conditions.get("isLong")),
     }
 
-
-async def _latest_commute(db: AsyncSession) -> dict[int, dict]:
-    destination = await get_commute_destination(db)
-    key = destination_key(destination)
-    if key is None:
-        return {}
-    return await commute_service.bulk_stats(db, key, destination=destination)
-
-
 async def _query_cards(
     db: AsyncSession,
     conditions: dict,
@@ -187,104 +178,53 @@ async def _query_cards(
     limit: int = 4,
     sort_by_commute: bool = False,
 ) -> tuple[list[dict], dict]:
-    total = int(
-        await db.scalar(
-            select(func.count())
-            .select_from(Listing)
-            .where(Listing.status == ListingStatus.active, Listing.score.is_not(None))
-        )
-        or 0
+    return await agent_tools.search_cards(
+        db, conditions, limit=limit, sort_by_commute=sort_by_commute
     )
-    stmt = (
-        select(Listing, Source.code, City.code, PoiCache)
-        .join(Source, Listing.source_id == Source.id)
-        .join(City, Listing.city_id == City.id)
-        .outerjoin(PoiCache, PoiCache.community_id == Listing.community_id)
-        .where(Listing.status == ListingStatus.active, Listing.score.is_not(None))
-    )
-    if conditions.get("budget"):
-        stmt = stmt.where(Listing.rent <= int(conditions["budget"]))
-    if conditions.get("layout"):
-        stmt = stmt.where(Listing.layout.ilike(f"%{conditions['layout']}%"))
-    if conditions.get("district"):
-        stmt = stmt.where(Listing.district == conditions["district"])
-    must = set(conditions.get("must") or [])
-    for tag in must - {"南向"}:
-        stmt = stmt.where(Listing.tags.contains([tag]))
-    if "南向" in must:
-        stmt = stmt.where(Listing.orientation.ilike("%南%"))
-    stmt = stmt.order_by(Listing.score.desc().nullslast(), Listing.id.desc()).limit(100)
-    rows = (await db.execute(stmt)).all()
-    commute = await _latest_commute(db)
-    max_commute = conditions.get("commute")
-    cards = []
-    for listing, source_code, city_code, poi in rows:
-        stats = commute.get(listing.community_id)
-        minutes = round(stats["p50_min"]) if stats else None
-        if max_commute is not None and (minutes is None or minutes > int(max_commute)):
-            continue
-        item = listing_service._listing_dict(listing, source_code, city_code)
-        item["score_reasons"] = listing.score_reasons or {}
-        item["commute_min"] = minutes
-        item["commute_p50"] = stats["p50_min"] if stats else None
-        item["commute_p90"] = stats["p90_min"] if stats else None
-        item["commute_buckets"] = stats["bucket_count"] if stats else 0
-        item["commute_static"] = stats["static"] if stats else None
-        item["samples"] = stats["samples"] if stats else 0
-        item["dining_count"] = poi.dining_count if poi else None
-        item["daily_count"] = poi.daily_count if poi else None
-        item["nightlife_count"] = poi.nightlife_count if poi else None
-        cards.append(item)
-    if sort_by_commute:
-        cards.sort(key=lambda item: item["commute_min"] if item["commute_min"] is not None else 999)
-    counts = {
-        "total": total,
-        "filtered": len(rows),
-        "final": min(len(cards), limit),
-    }
-    return cards[:limit], counts
 
 
-def _plan_steps(conditions: dict, counts: dict) -> list[dict]:
-    summary = conditions_summary(conditions)
-    return [
-        {"id": "parse", "label": "解析需求", "desc": summary, "status": "done", "time": "0ms"},
+def _build_plan(
+    condition_text: str,
+    guard_text: str,
+    tool_plan: list[dict],
+    final_count: int,
+) -> list[dict]:
+    steps = [
         {
-            "id": "search",
-            "label": "本地检索",
-            "desc": f"{counts['total']} 套已评分",
+            "id": "parse",
+            "label": "解析需求",
+            "desc": condition_text,
             "status": "done",
             "time": "local",
         },
         {
-            "id": "filter",
-            "label": "硬过滤",
-            "desc": f"{counts['filtered']} 套",
-            "status": "done",
-            "time": "local",
-        },
-        {
-            "id": "commute",
-            "label": "算通勤",
-            "desc": "最新缓存 · 0 外部调用",
-            "status": "done",
-            "time": "cache",
-        },
-        {
-            "id": "detail",
-            "label": "抓详情",
-            "desc": "详情图/AI 未接入",
-            "status": "pending",
-            "time": "—",
-        },
-        {
-            "id": "answer",
-            "label": "推荐",
-            "desc": f"{counts['final']} 套",
+            "id": "guard",
+            "label": "输入护栏",
+            "desc": guard_text,
             "status": "done",
             "time": "local",
         },
     ]
+    for index, item in enumerate(tool_plan):
+        steps.append(
+            {
+                "id": f"tool-{index + 1}",
+                "label": item["tool"],
+                "desc": item.get("summary") or item.get("reason") or "",
+                "status": item.get("status", "done"),
+                "time": item.get("time", "local"),
+            }
+        )
+    steps.append(
+        {
+            "id": "answer",
+            "label": "推荐",
+            "desc": f"{final_count} 套候选",
+            "status": "done",
+            "time": "local",
+        }
+    )
+    return steps
 
 
 def _answer_for(cards: list[dict], conditions: dict) -> str:
@@ -292,6 +232,7 @@ def _answer_for(cards: list[dict], conditions: dict) -> str:
         return (
             f"没有找到同时满足「{conditions_summary(conditions)}」的房源。"
             "建议放宽预算、通勤或户型，或者去掉电梯/精装等硬条件。"
+            "本次只使用本地库存与缓存，未调用外部模型。"
         )
     lines = []
     for card in cards[:3]:
@@ -301,14 +242,7 @@ def _answer_for(cards: list[dict], conditions: dict) -> str:
             f"{card.get('community_name') or '房源'} · ¥{card.get('rent')} · "
             f"{commute_text} · {card.get('score')} 分"
         )
-    return "；".join(lines) + "。本次只查本地库存，未调用高德；详情图/AI 未接入。"
-
-
-def _tools_list(conditions: dict, counts: dict) -> list[list[str]]:
-    return [
-        ["search_listings", conditions_summary(conditions), "local", f"{counts['filtered']} 套"],
-        ["commute_cache", "最新通勤样本", "cache", f"{counts['final']} 套有通勤"],
-    ]
+    return "；".join(lines) + "。本次只使用本地库存与缓存，未调用外部模型。"
 
 
 def _monitor_name(conditions: dict) -> str:
@@ -351,8 +285,10 @@ async def _save_session(
     result: str,
     latency_ms: int,
     llm: dict | None = None,
+    guardrail_log: list[dict] | None = None,
+    status: str = "done",
 ) -> None:
-    session.status = "done"
+    session.status = status
     session.stage = stage
     session.conditions = conditions
     session.candidates = candidates
@@ -361,6 +297,7 @@ async def _save_session(
     session.latency_ms = latency_ms
     session.plan = plan
     session.tools_list = tools
+    session.guardrails = guardrail_log or []
     session.result = result
     if llm:
         if llm.get("model"):
@@ -377,20 +314,148 @@ async def _save_session(
     await db.commit()
 
 
+def _compact_result(result: dict) -> str:
+    try:
+        text = json.dumps(result, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return "{}"
+    return text[:3000]
+
+
+async def _execute_tools(
+    db: AsyncSession,
+    session: AgentSession,
+    steps: list[dict],
+    conditions: dict,
+    *,
+    user_id: int,
+) -> tuple[list[dict], dict, dict, list[list[str]], list[dict], list[dict]]:
+    """Execute the validated tool plan and persist one trace row per call."""
+    cards: list[dict] = []
+    counts = {"total": 0, "filtered": 0, "final": 0}
+    results: list[dict] = []
+    trace: list[list[str]] = []
+    tool_plan: list[dict] = []
+    current = dict(conditions)
+    trimmed = steps[: guardrails.MAX_TOOL_STEPS]
+    for index, step in enumerate(trimmed):
+        tool = str(step.get("tool") or "")
+        args = dict(step.get("args") or {})
+        started = time.monotonic()
+        resolved: dict = {}
+        status = "ok"
+        summary = ""
+        result: dict = {}
+        error_text: str | None = None
+        try:
+            result, summary, resolved = await asyncio.wait_for(
+                agent_tools.execute(
+                    db,
+                    tool,
+                    args,
+                    base_conditions=current,
+                    cards=cards,
+                    user_id=user_id,
+                ),
+                timeout=8.0,
+            )
+        except Exception as exc:
+            status = "error"
+            error_text = f"{type(exc).__name__}: {exc}"[:300]
+            summary = f"{tool} 失败：{type(exc).__name__}"
+            result = {"error": error_text}
+        latency = int((time.monotonic() - started) * 1000)
+        db.add(
+            AgentToolCall(
+                session_id=session.id,
+                step=index + 1,
+                tool=tool[:32],
+                args=resolved or args,
+                status=status,
+                latency_ms=latency,
+                result_summary=summary[:255],
+                result=result if isinstance(result, dict) else {"value": result},
+                error=error_text,
+            )
+        )
+        trace.append(
+            [
+                tool,
+                json.dumps(resolved or args, ensure_ascii=False, default=str)[:300],
+                f"{latency}ms",
+                summary[:120],
+            ]
+        )
+        tool_plan.append(
+            {
+                "tool": tool,
+                "reason": step.get("reason") or "",
+                "status": status,
+                "summary": summary[:160],
+                "time": f"{latency}ms",
+            }
+        )
+        if status == "ok":
+            results.append(
+                {
+                    "tool": tool,
+                    "summary": summary,
+                    "data": _compact_result(result),
+                }
+            )
+            if tool == "search_listings":
+                cards = list(result.get("cards") or [])
+                counts = dict(result.get("counts") or counts)
+                current = dict(result.get("conditions") or current)
+    await db.commit()
+    return cards, counts, current, trace, results, tool_plan
+
+
 async def stream(
     db: AsyncSession, session_id: str | None, message: str, *, user_id: int
 ) -> AsyncIterator[dict]:
     started = time.monotonic()
     session: AgentSession | None = None
+    guard_log: list[dict] = []
     try:
+        inspection = guardrails.inspect_message(message)
+        guard_record = {
+            "stage": "input",
+            "flags": inspection["flags"],
+            "pii_hits": inspection["pii_hits"],
+            "injections": inspection["injections"],
+            "summary": guardrails.summarize(inspection),
+        }
+        guard_log.append(guard_record)
+        masked = inspection["masked"]
+        allow_llm = bool(inspection["allow_llm"])
+        budget_record: dict = {}
+        budget_blocked = ""
+        if allow_llm:
+            try:
+                budget_record = await guardrails.check_llm_budget(db)
+            except guardrails.BudgetExceeded as exc:
+                allow_llm = False
+                budget_blocked = str(exc)
+                budget_record = {"blocked": budget_blocked}
+        if budget_record:
+            guard_log.append({"stage": "budget", **budget_record})
+
         if session_id:
             session = await db.get(AgentSession, session_id)
         new_session = session is None
+
+        parse_meta = llm_service.merge_meta()
+        plan_meta = llm_service.merge_meta()
+        answer_meta = llm_service.merge_meta()
+        conditions: dict = {}
+
         if new_session:
-            rule = parse_conditions(message)
-            intent, parse_meta = await llm_service.parse_intent(db, message, {})
+            rule = parse_conditions(masked)
+            intent = None
+            if allow_llm:
+                intent, parse_meta = await llm_service.parse_intent(db, masked, {})
             conditions = _merge_llm_conditions(rule, intent)
-            llm_meta = parse_meta
             session = AgentSession(
                 id=f"S-{uuid.uuid4().hex[:8].upper()}",
                 user_id=user_id,
@@ -402,139 +467,200 @@ async def stream(
             db.add(session)
             await db.commit()
             await db.refresh(session)
-        yield {"type": "session", "sessionId": session.id, "title": session.title}
+        else:
+            conditions = dict(session.conditions or {})
 
-        if new_session:
-            cards, counts = await _query_cards(db, conditions)
-            plan = _plan_steps(conditions, counts)
-            yield {"type": "conditions", "conditions": _ui_conditions(conditions)}
-            yield {"type": "plan", "steps": plan}
-            yield {
-                "type": "budget",
-                "amap": 0,
-                "cap": _session_amap_cap(await get_admin_settings(db)),
-            }
-            yield {
-                "type": "cards",
-                "cards": cards,
-                "longgang": bool(conditions.get("isLong")),
-            }
-            llm_answer, answer_meta = await llm_service.answer(db, cards, conditions)
-            llm_meta = llm_service.merge_meta(llm_meta, answer_meta)
-            answer = llm_answer or _answer_for(cards, conditions)
-            yield {"type": "message", "text": answer}
-            latency = int((time.monotonic() - started) * 1000)
-            tools = _tools_list(conditions, counts) + llm_meta["calls"]
-            await _save_session(
-                db,
-                session,
-                stage="已推荐" if cards else "无匹配",
-                conditions=conditions,
-                candidates=f"{counts['total']} → {counts['filtered']} → {counts['final']}",
-                plan=plan,
-                tools=tools,
-                result=answer,
-                latency_ms=latency,
-                llm=llm_meta,
-            )
-            yield {"type": "done"}
-            return
+        yield {"type": "session", "sessionId": session.id, "title": session.title}
 
         base = dict(session.conditions or {})
         lower = message.lower()
-        if "对比" in message:
-            text = "已经切到对比视图。差异主要在通勤、租金和面积；如果两个人住，优先看两居。"
+        quick_text: str | None = None
+        quick_saved = False
+        if not new_session and "对比" in message:
+            quick_text = "已经切到对比视图。差异主要在通勤、租金和面积；如果两个人住，优先看两居。"
             yield {"type": "tab", "tab": "compare"}
-            yield {"type": "message", "text": text}
-            latency = int((time.monotonic() - started) * 1000)
-            await _save_session(
-                db,
-                session,
-                stage="对比视图",
-                conditions=base,
-                candidates=session.candidates or "",
-                plan=session.plan or [],
-                tools=session.tools_list or [],
-                result=text,
-                latency_ms=latency,
+        elif not new_session and ("图片" in message or "ai" in lower):
+            detail_text = (
+                "封面级图片管线已接入后台：下载封面、dHash 去重、价格异常与中介话术信号，"
+                "两条以上信号才标记可疑。视觉大模型未授权，聊天中不主动触发下载。"
             )
-            yield {"type": "done"}
-            return
-        if "图片" in message or "ai" in lower:
-            text = (
-                "图片分析尚未接入。计划只对候选详情抓 3–6 张图，"
-                "做 pHash 和视觉标签；当前版本先用列表字段。"
-            )
-            yield {"type": "ai", "text": text}
-            yield {
-                "type": "message",
-                "text": "图片管线在 Phase 4 接入；当前推荐仍基于价格、通勤和标签。",
-            }
-            latency = int((time.monotonic() - started) * 1000)
-            await _save_session(
-                db,
-                session,
-                stage="图片未接入",
-                conditions=base,
-                candidates=session.candidates or "",
-                plan=session.plan or [],
-                tools=session.tools_list or [],
-                result=text,
-                latency_ms=latency,
-            )
-            yield {"type": "done"}
-            return
-        if "保存" in message or "监控" in message:
+            yield {"type": "ai", "text": detail_text}
+            quick_text = "封面分析在管理端「图片 / AI」页；本次推荐仍基于价格、通勤和标签。"
+        elif not new_session and ("保存" in message or "监控" in message):
             name = _monitor_name(base)
-            await create_monitor(db, name, base, user_id=user_id)
+            save_args = {"name": name, "conditions": base}
+            resolved: dict = {}
+            started_save = time.monotonic()
+            try:
+                result, summary, resolved = await agent_tools.execute(
+                    db,
+                    "save_monitor",
+                    save_args,
+                    base_conditions=base,
+                    cards=[],
+                    user_id=user_id,
+                )
+                status = "ok"
+            except Exception as exc:
+                result = {"error": str(exc)[:200]}
+                summary = "保存监控失败"
+                status = "error"
+                resolved = save_args
+            latency = int((time.monotonic() - started_save) * 1000)
+            db.add(
+                AgentToolCall(
+                    session_id=session.id,
+                    step=1,
+                    tool="save_monitor",
+                    args=resolved,
+                    status=status,
+                    latency_ms=latency,
+                    result_summary=summary[:255],
+                    result=result,
+                    error=None if status == "ok" else result.get("error"),
+                )
+            )
+            await db.commit()
             yield {"type": "toast", "message": f"已保存监控：{name}"}
-            yield {"type": "message", "text": "已保存为监控条件。新匹配/降价推送在后续接入。"}
-            latency = int((time.monotonic() - started) * 1000)
+            quick_text = "已保存为监控条件。新匹配/降价推送在后续接入。"
+            plan = _build_plan(
+                conditions_summary(base),
+                guard_record["summary"],
+                [
+                    {
+                        "tool": "save_monitor",
+                        "reason": "用户明确要求保存",
+                        "status": status,
+                        "summary": summary,
+                        "time": f"{latency}ms",
+                    }
+                ],
+                0,
+            )
+            quick_saved = True
             await _save_session(
                 db,
                 session,
                 stage="监控已保存",
                 conditions=base,
                 candidates=session.candidates or "",
-                plan=session.plan or [],
-                tools=session.tools_list or [],
-                result="已保存监控条件。",
-                latency_ms=latency,
+                plan=plan,
+                tools=[["save_monitor", name, f"{latency}ms", summary]],
+                result=quick_text,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                guardrail_log=guard_log,
+                status="done",
             )
+
+        if quick_text is not None and not new_session:
+            if not quick_saved:
+                await _save_session(
+                    db,
+                    session,
+                    stage="对比视图" if "对比" in message else "图片说明",
+                    conditions=base,
+                    candidates=session.candidates or "",
+                    plan=_build_plan(
+                        conditions_summary(base),
+                        guard_record["summary"],
+                        [],
+                        0,
+                    ),
+                    tools=[],
+                    result=quick_text,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    guardrail_log=guard_log,
+                    status="done",
+                )
+            yield {"type": "message", "text": quick_text}
             yield {"type": "done"}
             return
 
-        rule = parse_conditions(message, base)
-        intent, parse_meta = await llm_service.parse_intent(db, message, base)
-        conditions = _merge_llm_conditions(rule, intent)
-        llm_meta = parse_meta
-        sort_by_commute = "通勤" in message or "近" in message
-        cards, counts = await _query_cards(
-            db, conditions, sort_by_commute=sort_by_commute
+        if new_session:
+            steps = None
+            if allow_llm:
+                steps, plan_meta = await llm_service.plan_tools(db, masked, conditions)
+            if not steps:
+                steps = agent_tools.rule_plan(masked, conditions)
+            cards, counts, conditions, trace, tool_results, tool_plan = (
+                await _execute_tools(db, session, steps, conditions, user_id=user_id)
+            )
+        else:
+            rule = parse_conditions(masked, base)
+            intent = None
+            if allow_llm:
+                intent, parse_meta = await llm_service.parse_intent(db, masked, base)
+            conditions = _merge_llm_conditions(rule, intent)
+            steps = None
+            if allow_llm:
+                steps, plan_meta = await llm_service.plan_tools(db, masked, conditions)
+            if not steps:
+                steps = agent_tools.rule_plan(masked, conditions)
+            cards, counts, conditions, trace, tool_results, tool_plan = (
+                await _execute_tools(db, session, steps, conditions, user_id=user_id)
+            )
+
+        if not counts.get("total"):
+            cards, counts = await _query_cards(db, conditions)
+        plan = _build_plan(
+            conditions_summary(conditions),
+            guard_record["summary"],
+            tool_plan,
+            int(counts.get("final") or 0),
         )
         yield {"type": "conditions", "conditions": _ui_conditions(conditions)}
-        yield {"type": "budget", "amap": 0, "cap": _session_amap_cap(await get_admin_settings(db))}
+        yield {"type": "plan", "steps": plan}
+        yield {
+            "type": "budget",
+            "amap": 0,
+            "cap": _session_amap_cap(await get_admin_settings(db)),
+            "ai": {
+                "used": budget_record.get("used"),
+                "limit": budget_record.get("limit"),
+                "blocked": bool(budget_blocked),
+            },
+        }
         yield {
             "type": "cards",
             "cards": cards,
             "longgang": bool(conditions.get("isLong")),
         }
-        llm_answer, answer_meta = await llm_service.answer(db, cards, conditions)
-        llm_meta = llm_service.merge_meta(llm_meta, answer_meta)
+        llm_answer = None
+        if allow_llm:
+            llm_answer, answer_meta = await llm_service.answer(
+                db, cards, conditions, tool_results=tool_results
+            )
+        llm_meta = llm_service.merge_meta(parse_meta, plan_meta, answer_meta)
         answer = llm_answer or _answer_for(cards, conditions)
+        if inspection["injections"]:
+            answer = "检测到疑似指令覆盖/提示词探测，本次只按本地规则处理。" + answer
+        if budget_blocked:
+            answer = f"{budget_blocked}；本次改用规则版。" + answer
         yield {"type": "message", "text": answer}
         latency = int((time.monotonic() - started) * 1000)
+        tools = trace + list(llm_meta.get("calls") or [])
+        status = "blocked" if budget_blocked else "done"
+        if budget_blocked:
+            stage = "预算拦截"
+        elif new_session:
+            stage = "已推荐" if cards else "无匹配"
+        else:
+            stage = "已重排" if "通勤" in message or "近" in message else "已更新"
         await _save_session(
             db,
             session,
-            stage="已重排" if sort_by_commute else "已更新",
+            stage=stage,
             conditions=conditions,
-            candidates=f"{counts['total']} → {counts['filtered']} → {counts['final']}",
-            plan=session.plan or [],
-            tools=_tools_list(conditions, counts) + llm_meta["calls"],
+            candidates=(
+                f"{counts['total']} → {counts['filtered']} → {counts['final']}"
+            ),
+            plan=plan,
+            tools=tools,
             result=answer,
             latency_ms=latency,
             llm=llm_meta,
+            guardrail_log=guard_log,
+            status=status,
         )
         yield {"type": "done"}
     except Exception as exc:
@@ -645,6 +771,23 @@ async def list_admin_sessions(db: AsyncSession, limit: int = 50) -> list[dict]:
         .scalars()
         .all()
     )
+    session_ids = [item.id for item in rows]
+    calls: list[AgentToolCall] = []
+    if session_ids:
+        calls = list(
+            (
+                await db.execute(
+                    select(AgentToolCall)
+                    .where(AgentToolCall.session_id.in_(session_ids))
+                    .order_by(AgentToolCall.session_id, AgentToolCall.step)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    grouped: dict[str, list[AgentToolCall]] = {}
+    for call in calls:
+        grouped.setdefault(call.session_id, []).append(call)
     result = []
     for item in rows:
         plan = [
@@ -674,6 +817,19 @@ async def list_admin_sessions(db: AsyncSession, limit: int = 50) -> list[dict]:
                 "fallback": item.llm_fallback,
                 "plan": plan,
                 "toolsList": item.tools_list or [],
+                "guardrails": item.guardrails or [],
+                "toolCalls": [
+                    {
+                        "step": call.step,
+                        "tool": call.tool,
+                        "args": call.args or {},
+                        "status": call.status,
+                        "latency": f"{call.latency_ms}ms" if call.latency_ms else "—",
+                        "summary": call.result_summary,
+                        "error": call.error,
+                    }
+                    for call in grouped.get(item.id, [])
+                ],
                 "result": item.result or "",
             }
         )

@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import provider_runtime
+from app.services import agent_tools, provider_runtime
 
 DISTRICTS = {
     "福田区",
@@ -134,8 +134,72 @@ async def parse_intent(
     return intent, meta
 
 
+async def plan_tools(
+    db: AsyncSession, message: str, conditions: dict
+) -> tuple[list[dict] | None, dict]:
+    """Ask the model for a strict-JSON, whitelisted tool plan.
+
+    We deliberately use a JSON plan instead of provider-native tool calls: the
+    OpenAI-compatible endpoint exposes ``tools`` but the exact function-calling
+    envelope varies between ModelScope models, while a JSON plan can be
+    validated locally and falls back to the deterministic planner.
+    """
+    system = (
+        "你是 RentRadar 的工具规划器。只输出 JSON 对象，格式："
+        '{"steps":[{"tool":"工具名","args":{...},"reason":"一句话"}]}。'
+        "规则：1) 最多 4 步；2) 第一步必须是 search_listings；"
+        "3) 只能使用给定工具；4) 缺少的房源 id 用 $top（第一套）或 $top3（前三套）占位；"
+        "5) 不要编造 id、不要请求写操作；6) 不要输出 markdown 或解释。\n可用工具：\n"
+        + agent_tools.prompt_catalog()
+    )
+    user = json.dumps(
+        {"conditions": conditions, "message": message}, ensure_ascii=False
+    )
+    started = time.monotonic()
+    try:
+        result = await provider_runtime.invoke_chat(
+            db,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=700,
+            temperature=0.0,
+        )
+    except Exception as exc:
+        return None, _empty_meta(f"{type(exc).__name__}: {exc}"[:200])
+    latency = int((time.monotonic() - started) * 1000)
+    data = _extract_json(result["content"])
+    meta = {
+        "model": result["model"],
+        "prompt_tokens": result["prompt_tokens"],
+        "completion_tokens": result["completion_tokens"],
+        "cost": 0.0,
+        "fallback": False,
+        "error": None,
+        "calls": [
+            [
+                "llm_plan",
+                result["model"],
+                f"{latency}ms",
+                f"{result['prompt_tokens']}+{result['completion_tokens']} tok",
+            ]
+        ],
+    }
+    try:
+        steps = agent_tools.normalize_plan(data)
+    except agent_tools.ToolArgumentError as exc:
+        meta["fallback"] = True
+        meta["error"] = str(exc)[:200]
+        return None, meta
+    return steps, meta
+
+
 async def answer(
-    db: AsyncSession, cards: list[dict], conditions: dict
+    db: AsyncSession,
+    cards: list[dict],
+    conditions: dict,
+    tool_results: list[dict] | None = None,
 ) -> tuple[str | None, dict]:
     compact = [
         {
@@ -151,13 +215,15 @@ async def answer(
         for card in cards
     ]
     system = (
-        "你是 RentRadar 的租房顾问。基于提供的本地库存卡片写 2–4 句中文推荐，"
-        "不得编造卡片外的事实；必须说明本次只查本地库存，详情图/AI 尚未接入。"
+        "你是 RentRadar 的租房顾问。基于提供的本地库存卡片和工具结果写 2–4 句中文推荐，"
+        "不得编造卡片/工具结果之外的事实；价格、通勤、评分必须与数据一致。"
         "如果卡片为空，直接建议用户放宽预算/通勤/户型。"
+        "不允许建议下单、转账或联系中介之外的写操作。"
     )
-    user = json.dumps(
-        {"conditions": conditions, "cards": compact}, ensure_ascii=False
-    )
+    payload = {"conditions": conditions, "cards": compact}
+    if tool_results:
+        payload["tool_results"] = tool_results
+    user = json.dumps(payload, ensure_ascii=False)
     started = time.monotonic()
     try:
         result = await provider_runtime.invoke_chat(

@@ -91,6 +91,8 @@ class InspectionOut(InspectionUpdate):
 
 class ListingDetail(ListingOut):
     score_reasons: dict = Field(default_factory=dict)
+    image_analysis: dict | None = None
+    reputation: dict | None = None
     snapshots: list[SnapshotOut] = Field(default_factory=list)
     events: list[EventOut] = Field(default_factory=list)
     delivery_probes: list[DeliveryProbeOut] = Field(default_factory=list)

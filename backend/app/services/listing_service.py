@@ -10,12 +10,13 @@ from app.models import (
     Event,
     Inspection,
     Listing,
+    ListingImageAnalysis,
     ListingStatus,
     Snapshot,
     Source,
     Watchlist,
 )
-from app.services import commute_service
+from app.services import commute_service, reputation_service
 from app.services.settings_service import destination_key, get_commute_destination
 
 CHECKLIST_KEYS = [
@@ -193,9 +194,28 @@ async def get_listing_detail(
             .all()
         )
 
+    analysis = await db.get(ListingImageAnalysis, listing_id)
+    reputation = await reputation_service.listing_reputation(
+        db, listing.community_id
+    )
     data.update(
         {
             "score_reasons": listing.score_reasons or {},
+            "image_analysis": (
+                {
+                    "verdict": analysis.verdict,
+                    "confidence": float(analysis.confidence)
+                    if analysis.confidence is not None
+                    else None,
+                    "signals": analysis.signals or [],
+                    "quality": analysis.quality or {},
+                    "needs_vision": analysis.needs_vision,
+                    "analyzed_at": analysis.analyzed_at,
+                }
+                if analysis is not None
+                else None
+            ),
+            "reputation": reputation,
             "delivery_probes": [
                 {
                     "id": item.id,
