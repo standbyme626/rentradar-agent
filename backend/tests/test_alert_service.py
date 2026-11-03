@@ -72,6 +72,26 @@ def test_queue_disk_backup_and_source_alerts():
     assert any(item["code"] == "disk_high" and item["severity"] == "critical" for item in alerts)
 
 
+def test_configured_backup_dir_without_dump_alerts():
+    alerts = evaluate_alerts(
+        {
+            "db": "ok",
+            "queued_jobs": 0,
+            "failing_tasks": [],
+            "providers": [],
+            "disk": None,
+            "backup": {
+                "configured": True,
+                "dir": "/backups",
+                "latest_age_hours": None,
+                "marker": {},
+            },
+        },
+        base_settings(),
+    )
+    assert [item["code"] for item in alerts] == ["backup_missing"]
+
+
 def test_db_error_is_critical_and_missing_backup_is_quiet():
     alerts = evaluate_alerts(
         {

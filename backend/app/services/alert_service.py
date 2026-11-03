@@ -124,6 +124,12 @@ def evaluate_alerts(snapshot: dict[str, Any], admin_settings: dict) -> list[dict
         )
     backup_hours = int(admin_settings.get("alertBackupHours") or 26)
     latest_age = backup.get("latest_age_hours")
+    if backup.get("configured") and latest_age is None:
+        add(
+            "backup_missing",
+            "warning",
+            f"备份目录 {backup.get('dir') or ''} 存在但没有 dump 文件。",
+        )
     if backup.get("configured") and latest_age is not None and latest_age > backup_hours:
         add(
             "backup_stale",

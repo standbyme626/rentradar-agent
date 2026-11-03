@@ -148,7 +148,7 @@ async def city_health(db: AsyncSession) -> list[dict]:
             )
             or 0
         )
-        failed_runs = int(
+        enabled_tasks = int(
             await db.scalar(
                 select(func.count())
                 .select_from(Task)
@@ -156,5 +156,7 @@ async def city_health(db: AsyncSession) -> list[dict]:
             )
             or 0
         )
-        rows.append({**city, "active_listings": active, "enabled_tasks": failed_runs})
+        rows.append(
+            {**city, "active_listings": active, "enabled_tasks": enabled_tasks}
+        )
     return rows

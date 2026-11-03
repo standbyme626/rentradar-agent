@@ -67,6 +67,7 @@ async def create_task(db: AsyncSession, payload: dict) -> dict:
         schedule=payload.get("schedule") or {"fast_minutes": 10, "slow_minutes": 180},
         account_strategy=payload.get("account_strategy") or "auto",
         proxy_strategy=payload.get("proxy_strategy") or "direct",
+        enabled=bool(payload.get("enabled", True)),
     )
     db.add(task)
     await db.commit()

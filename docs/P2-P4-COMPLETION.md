@@ -27,7 +27,7 @@
 | 参考租金 | `reference_rents` 表、导入/删除 API、CLI；评分价格项有参考价时优先于挂牌中位价 | normalize/pick 单测；SQL 迁移离线生成通过 |
 | 原生 tool_calls | Provider 支持 tools；`plan_tools_native` + `APP_AGENT_NATIVE_TOOLS` 开关；失败自动回退严格 JSON/rules | 真实 spike 通过；开关默认 false，避免未经生产验证就改变主链路 |
 | 文档 | `README.md`、`docs/OPS.md`、本文件；MEMORY/HANDOFF/API-SOURCES 更新 | — |
-| 本地验证 | 后端 `pytest -q` 147 passed、`ruff check` 全绿；前端 `vue-tsc` + `npm run build`（`VITE_USE_MOCK=false`）通过；迁移离线 SQL 生成通过 | 见本文件“完成度口径” |
+| 本地验证 | 后端 `pytest -q` 148 passed、`ruff check` 全绿；前端 `vue-tsc` + `npm run build`（`VITE_USE_MOCK=false`）通过；迁移离线 SQL 生成通过 | 见本文件“完成度口径” |
 
 ## 3. 计划书第 6 节逐项状态
 
