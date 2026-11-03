@@ -49,6 +49,12 @@ const router = createRouter({
           meta: { title: '数据质量', crumb: '数据 / 数据质量' },
         },
         {
+          path: 'reputation',
+          name: 'admin-reputation',
+          component: () => import('@/features/admin/ReputationView.vue'),
+          meta: { title: '口碑证据', crumb: '数据 / 口碑证据' },
+        },
+        {
           path: 'providers',
           name: 'admin-providers',
           component: () => import('@/features/admin/ProvidersView.vue'),

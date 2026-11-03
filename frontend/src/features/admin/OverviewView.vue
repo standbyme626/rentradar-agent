@@ -55,15 +55,15 @@ const toneBadge = (tone: string) =>
       </div>
       <div class="action-card">
         <div class="grid h-8 w-8 place-items-center rounded-lg bg-forest-soft text-forest"><Image :size="16" /></div>
-        <b>图片 / AI 未接入</b>
-        <p>当前只有列表封面 URL；没有详情图、pHash、视觉标签，也没有假房源信号。</p>
-        <RouterLink to="/admin/images" class="btn btn-sm">看计划管线</RouterLink>
+        <b>封面分析已接入</b>
+        <p>列表封面已能下载、dHash 去重并聚合重复图/低价/话术信号；视觉标签尚未授权。</p>
+        <RouterLink to="/admin/images" class="btn btn-sm">看图片队列</RouterLink>
       </div>
       <div class="action-card">
         <div class="grid h-8 w-8 place-items-center rounded-lg bg-forest-soft text-forest"><Bot :size="16" /></div>
-        <b>Agent 已接入 · LLM + 规则兜底</b>
-        <p>会话、计划、条件与卡片已跑通；LLM 意图解析与回答已接；工具运行时和图片分析仍在后续。</p>
-        <RouterLink to="/admin/agent" class="btn btn-sm">看真实会话</RouterLink>
+        <b>Agent 工具运行时已接入</b>
+        <p>白名单工具、预算/PII/注入护栏、工具 trace 与 60 条规则回归集已可查看。</p>
+        <RouterLink to="/admin/agent" class="btn btn-sm">看 trace 与评测</RouterLink>
       </div>
     </div>
 
