@@ -35,25 +35,33 @@ def _age_minutes(value: datetime | None, now: datetime | None = None) -> float |
 
 
 def _backup_snapshot(path: Path) -> dict[str, Any]:
-    marker = path / "last_backup.json"
-    dumps = sorted(path.glob("rentradar_*.dump"), key=lambda item: item.stat().st_mtime)
-    latest_age_hours = None
-    if dumps:
-        latest_age_hours = round(
-            (datetime.now().timestamp() - dumps[-1].stat().st_mtime) / 3600, 1
-        )
-    marker_data: dict[str, Any] = {}
-    if marker.is_file():
-        try:
-            marker_data = json.loads(marker.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            marker_data = {"status": "unreadable"}
-    return {
-        "configured": path.is_dir(),
+    data: dict[str, Any] = {
+        "configured": False,
         "dir": str(path),
-        "latest_age_hours": latest_age_hours,
-        "marker": marker_data,
+        "latest_age_hours": None,
+        "marker": {},
+        "error": None,
     }
+    try:
+        if not path.is_dir():
+            return data
+        data["configured"] = True
+        marker = path / "last_backup.json"
+        dumps = sorted(
+            path.glob("rentradar_*.dump"), key=lambda item: item.stat().st_mtime
+        )
+        if dumps:
+            data["latest_age_hours"] = round(
+                (datetime.now().timestamp() - dumps[-1].stat().st_mtime) / 3600, 1
+            )
+        if marker.is_file():
+            try:
+                data["marker"] = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data["marker"] = {"status": "unreadable"}
+    except OSError as exc:
+        data["error"] = f"{type(exc).__name__}: {exc}"[:200]
+    return data
 
 
 def evaluate_alerts(snapshot: dict[str, Any], admin_settings: dict) -> list[dict]:
@@ -116,6 +124,12 @@ def evaluate_alerts(snapshot: dict[str, Any], admin_settings: dict) -> list[dict
 
     backup = snapshot.get("backup") or {}
     marker = backup.get("marker") or {}
+    if backup.get("error"):
+        add(
+            "backup_unreadable",
+            "warning",
+            f"备份目录无法读取：{str(backup.get('error'))[:120]}",
+        )
     if marker.get("status") == "failed":
         add(
             "backup_failed",
