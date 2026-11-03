@@ -22,6 +22,13 @@ DEFAULT_ADMIN_SETTINGS = {
     "quiet": True,
     "pauseAlert": True,
     "monitorPush": True,
+    "alertPush": True,
+    "alertQueueBacklog": 100,
+    "alertQueuedMinutes": 30,
+    "alertDiskPct": 85,
+    "alertBackupHours": 26,
+    "alertCooldownMinutes": 30,
+    "alertIntervalMinutes": 10,
 }
 
 

@@ -9,10 +9,16 @@ from sqlalchemy import func, select, text
 from app.core.db import SessionLocal, engine
 from app.core.security import hash_password
 from app.models import Base, City, Event, Job, Listing, Source, Task, User
+from app.services.alert_service import check_and_notify
 from app.services.crawl_service import run_task
-from app.services.delivery_service import probe_community, probe_for_listing
+from app.services.delivery_service import (
+    probe_community,
+    probe_for_listing,
+    record_manual_probe,
+)
 from app.services.digest_service import send_digest
 from app.services.enrich_service import enrich_task, rescore_task
+from app.services.reference_rent_service import import_rows as import_reference_rows
 from app.services.seed_service import seed
 from app.services.settings_service import set_commute_destination
 from app.services.shard_service import (
@@ -74,6 +80,22 @@ async def cmd_crawl(args) -> None:
     print(result)
 
 
+async def cmd_record_probe(args) -> None:
+    async with SessionLocal() as db:
+        result = await record_manual_probe(
+            db,
+            args.community_id,
+            meal_period_value=args.meal_period,
+            eta_low=args.eta_low,
+            eta_high=args.eta_high,
+            fee=args.fee,
+            merchant_count=args.merchant_count,
+            address_label=args.address,
+            confidence=args.confidence,
+        )
+    print(result)
+
+
 async def cmd_enrich(args) -> None:
     async with SessionLocal() as db:
         task = await db.get(Task, args.task_id)
@@ -100,6 +122,35 @@ async def cmd_rescore(args) -> None:
             print({"error": f"task {args.task_id} not found"})
             return
         result = await rescore_task(db, task, limit=args.limit)
+    print(result)
+
+
+async def cmd_alert(args) -> None:
+    async with SessionLocal() as db:
+        result = await check_and_notify(db, force=args.force, dry_run=args.dry_run)
+    print(json.dumps(result, ensure_ascii=False, default=str))
+
+
+async def cmd_import_listings(args) -> None:
+    async with SessionLocal() as db:
+        task = await db.get(Task, args.task_id)
+        if task is None:
+            print({"error": f"task {args.task_id} not found"})
+            return
+        task.filters = {**(task.filters or {}), "feed_path": args.file}
+        await db.commit()
+        result = await run_task(db, task, notify=args.notify)
+    print(result)
+
+
+async def cmd_import_reference_rents(args) -> None:
+    with open(args.file, encoding="utf-8") as handle:
+        payload = json.load(handle)
+    rows = payload.get("rows") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise SystemExit("reference rent file must be a list or {rows: [...]}")
+    async with SessionLocal() as db:
+        result = await import_reference_rows(db, args.city, rows)
     print(result)
 
 
@@ -424,6 +475,33 @@ def main() -> None:
     rescore = sub.add_parser("rescore", help="rescore listings for a task")
     rescore.add_argument("--task-id", type=int, required=True)
     rescore.add_argument("--limit", type=int, default=2000)
+    alert = sub.add_parser("alert", help="run the operational alert check")
+    alert.add_argument("--dry-run", action="store_true")
+    alert.add_argument("--force", action="store_true")
+    import_listings = sub.add_parser(
+        "import-listings", help="import a manual JSON/CSV feed into an existing task"
+    )
+    import_listings.add_argument("--task-id", type=int, required=True)
+    import_listings.add_argument("--file", required=True)
+    import_listings.add_argument("--notify", action="store_true")
+    record_probe = sub.add_parser(
+        "record-probe", help="record a Meituan probe observed manually on the phone"
+    )
+    record_probe.add_argument("--community-id", type=int, required=True)
+    record_probe.add_argument(
+        "--meal-period", choices=["lunch", "dinner", "late_night", "other"], required=True
+    )
+    record_probe.add_argument("--eta-low", type=int, required=True)
+    record_probe.add_argument("--eta-high", type=int, required=True)
+    record_probe.add_argument("--fee", type=float, default=None)
+    record_probe.add_argument("--merchant-count", type=int, default=None)
+    record_probe.add_argument("--address", default=None)
+    record_probe.add_argument("--confidence", type=float, default=0.7)
+    import_refs = sub.add_parser(
+        "import-reference-rents", help="import official/manual rent references"
+    )
+    import_refs.add_argument("--file", required=True)
+    import_refs.add_argument("--city", default="sz")
     digest = sub.add_parser("digest", help="send or preview the daily digest")
     digest.add_argument("--dry-run", action="store_true")
     probe = sub.add_parser("probe", help="run a Meituan delivery probe on the iPhone")
@@ -497,6 +575,14 @@ def main() -> None:
         asyncio.run(cmd_set_destination(args))
     elif args.command == "rescore":
         asyncio.run(cmd_rescore(args))
+    elif args.command == "alert":
+        asyncio.run(cmd_alert(args))
+    elif args.command == "record-probe":
+        asyncio.run(cmd_record_probe(args))
+    elif args.command == "import-listings":
+        asyncio.run(cmd_import_listings(args))
+    elif args.command == "import-reference-rents":
+        asyncio.run(cmd_import_reference_rents(args))
     elif args.command == "digest":
         asyncio.run(cmd_digest(args))
     elif args.command == "probe":

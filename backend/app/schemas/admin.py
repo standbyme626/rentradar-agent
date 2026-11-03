@@ -16,6 +16,13 @@ class AdminSettings(BaseModel):
     quiet: bool = True
     pauseAlert: bool = True
     monitorPush: bool = True
+    alertPush: bool = True
+    alertQueueBacklog: int = Field(default=100, ge=1)
+    alertQueuedMinutes: int = Field(default=30, ge=1)
+    alertDiskPct: int = Field(default=85, ge=50, le=100)
+    alertBackupHours: int = Field(default=26, ge=1, le=168)
+    alertCooldownMinutes: int = Field(default=30, ge=5, le=1440)
+    alertIntervalMinutes: int = Field(default=10, ge=5, le=1440)
 
 
 class AnalysisRequest(BaseModel):

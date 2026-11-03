@@ -7,6 +7,12 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
   routes: [
     {
+      path: '/share/:token',
+      name: 'share',
+      component: () => import('@/features/chat/ShareView.vue'),
+      meta: { title: '只读看板', public: true },
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/features/auth/LoginView.vue'),
@@ -73,6 +79,12 @@ const router = createRouter({
           meta: { title: '图片 / AI', crumb: '内容 / 图片与 AI' },
         },
         {
+          path: 'ops',
+          name: 'admin-ops',
+          component: () => import('@/features/admin/OpsView.vue'),
+          meta: { title: '运维', crumb: '运营 / 运维' },
+        },
+        {
           path: 'tasks',
           name: 'admin-tasks',
           component: () => import('@/features/admin/TasksView.vue'),
@@ -97,6 +109,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (to.meta.public) return true
   const auth = useAuthStore()
   await auth.ensureLoaded()
   if (to.name === 'login') {
@@ -115,6 +128,17 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   document.title = `${(to.meta.title as string) ?? 'RentRadar'} · RentRadar`
+  let robots = document.querySelector('meta[name="robots"]')
+  if (to.meta.public) {
+    if (!robots) {
+      robots = document.createElement('meta')
+      robots.setAttribute('name', 'robots')
+      document.head.appendChild(robots)
+    }
+    robots.setAttribute('content', 'noindex, nofollow, noarchive')
+  } else if (robots) {
+    robots.remove()
+  }
 })
 
 export default router

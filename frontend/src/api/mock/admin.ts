@@ -6,7 +6,12 @@ import type {
   Candidate,
   Community,
   ImagesData,
+  OpsStatus,
+  ReferenceRent,
   ReputationMention,
+  ShareLink,
+  SourceInfo,
+  CityInfo,
   ReputationOverview,
   ReputationSummary,
   Run,
@@ -241,6 +246,13 @@ const defaultSettings: AdminSettings = {
   quiet: true,
   pauseAlert: true,
   monitorPush: true,
+  alertPush: true,
+  alertQueueBacklog: 100,
+  alertQueuedMinutes: 30,
+  alertDiskPct: 85,
+  alertBackupHours: 26,
+  alertCooldownMinutes: 30,
+  alertIntervalMinutes: 10,
 }
 
 const demoAudit: AuditLogEntry[] = [
@@ -591,4 +603,135 @@ export const mockAdminService: AdminService = {
       total_sessions: 0,
     } satisfies AgentCostData
   },
+  async opsStatus() {
+    await delay(120)
+    return mockOpsStatus
+  },
+  async runOpsCheck() {
+    await delay(300)
+    return { alerts: mockOpsStatus.alerts, delivered: { ok: true } }
+  },
+  async shareLinks() {
+    await delay(80)
+    return mockShareLinks
+  },
+  async createShareLink(label, expiresDays) {
+    await delay(120)
+    return {
+      id: Date.now(),
+      label,
+      token_prefix: 'rr_share_abc123',
+      scope: 'dashboard',
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + expiresDays * 86400000).toISOString(),
+      revoked_at: null,
+      last_used_at: null,
+      use_count: 0,
+      active: true,
+      token: `rr_share_demo_${Date.now()}`,
+    } satisfies ShareLink
+  },
+  async revokeShareLink(id) {
+    await delay(80)
+    return { ...mockShareLinks[0], id, revoked_at: new Date().toISOString(), active: false }
+  },
+  async sources() {
+    await delay(80)
+    return mockSources
+  },
+  async updateSource(code, enabled) {
+    await delay(80)
+    return { ...mockSources[0], code, enabled }
+  },
+  async cities() {
+    await delay(80)
+    return mockCities
+  },
+  async updateCity(code, enabled) {
+    await delay(80)
+    return { ...mockCities[0], code, enabled }
+  },
+  async createTask(payload) {
+    await delay(120)
+    return {
+      id: Date.now(),
+      name: String(payload.name ?? '新任务'),
+      enabled: true,
+      city_code: String(payload.cityCode ?? 'sz'),
+      source_code: String(payload.sourceCode ?? 'beike'),
+      filters: {},
+      schedule: { fast_minutes: 10, slow_minutes: 180 },
+    }
+  },
+  async updateTask(id, payload) {
+    await delay(80)
+    return { ...tasks[0], id, ...payload }
+  },
+  async disableTask(id) {
+    await delay(80)
+    return { ...tasks[0], id, enabled: false }
+  },
+  async referenceRents(city) {
+    await delay(80)
+    return mockReferenceRents.filter((item) => !city || city === 'sz')
+  },
+  async importReferenceRents(city, rows) {
+    await delay(120)
+    return { created: rows.length, updated: 0, total: rows.length }
+  },
+  async deleteReferenceRent() {
+    await delay(80)
+    return { ok: true }
+  },
 }
+
+const mockOpsStatus: OpsStatus = {
+  snapshot: {
+    generated_at: new Date().toISOString(),
+    db: 'ok',
+    queued_jobs: 1,
+    running_jobs: 0,
+    oldest_queued_minutes: 2.4,
+    failed_jobs_1h: 0,
+    failing_tasks: [],
+    providers: [
+      { code: 'beike_api', status: 'ok', consecutive_failures: 0, circuit_open_until: null, last_error: null },
+      { code: 'opencode_go_deepseek', status: 'ok', consecutive_failures: 0, circuit_open_until: null, last_error: null },
+    ],
+    disk: { path: '/', used_pct: 61.2, free_gb: 39.4 },
+    backup: { configured: true, dir: '/home/kkk/backups/rentradar', latest_age_hours: 5.2, marker: { status: 'ok' } },
+  },
+  alerts: [],
+  state: {},
+  settings: { alertPush: true, alertIntervalMinutes: 10 },
+}
+
+const mockShareLinks: ShareLink[] = [
+  {
+    id: 1,
+    label: '给朋友看的总览',
+    token_prefix: 'rr_share_demo01',
+    scope: 'dashboard',
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+    revoked_at: null,
+    last_used_at: null,
+    use_count: 0,
+    active: true,
+  },
+]
+
+const mockSources: SourceInfo[] = [
+  { id: 1, code: 'beike', name: '贝壳租房', kind: 'api', enabled: true, rate_limit: {}, listings: 1395, tasks: 1, supported: true, reserved: false, note: '贝壳 App 列表 API' },
+  { id: 2, code: 'manual', name: '手动导入（品牌公寓/线下房源）', kind: 'json', enabled: false, rate_limit: {}, listings: 0, tasks: 0, supported: true, reserved: false, note: '手动导入（品牌公寓/线下房源）' },
+  { id: 3, code: 'ziroom', name: '自如（预留，未接入）', kind: 'html', enabled: false, rate_limit: {}, listings: 0, tasks: 0, supported: false, reserved: true, note: '自如（预留，未接入）' },
+]
+
+const mockCities: CityInfo[] = [
+  { id: 1, code: 'sz', name: '深圳', domain_template: 'https://sz.zu.ke.com', center_lng: 114.057868, center_lat: 22.543099, enabled: true, listings: 1395, communities: 587, tasks: 2, active_listings: 1201, enabled_tasks: 1 },
+  { id: 2, code: 'sh', name: '上海', domain_template: 'https://sh.zu.ke.com', center_lng: 121.473701, center_lat: 31.230416, enabled: false, listings: 0, communities: 0, tasks: 0, active_listings: 0, enabled_tasks: 0 },
+]
+
+const mockReferenceRents: ReferenceRent[] = [
+  { id: 1, community_id: 1, community_name: '居里十舍', district: '龙岗区', layout: '2室', monthly_rent: 4600, reference_month: '2026-10', source: 'housing_bureau', url: null, confidence: 0.8, updated_at: new Date().toISOString() },
+]

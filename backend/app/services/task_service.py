@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import City, Job, JobStatus, Run, Source, Task
+from app.services.catalog_service import SUPPORTED_HOUSING_SOURCES
 
 
 def _task_dict(task: Task, city_code: str, source_code: str, last_run) -> dict:
@@ -54,6 +55,10 @@ async def create_task(db: AsyncSession, payload: dict) -> dict:
         raise ValueError(f"unknown city: {payload['city_code']}")
     if source is None:
         raise ValueError(f"unknown source: {payload['source_code']}")
+    if source.code not in SUPPORTED_HOUSING_SOURCES:
+        raise ValueError(f"source is not supported for tasks: {source.code}")
+    if not city.enabled:
+        raise ValueError(f"city is disabled: {city.code}")
     task = Task(
         name=payload["name"],
         city_id=city.id,
@@ -82,6 +87,10 @@ async def update_task(db: AsyncSession, task_id: int, payload: dict) -> dict | N
     city = await db.get(City, task.city_id)
     source = await db.get(Source, task.source_id)
     return _task_dict(task, city.code, source.code, await _last_run(db, task.id))
+
+
+async def disable_task(db: AsyncSession, task_id: int) -> dict | None:
+    return await update_task(db, task_id, {"enabled": False})
 
 
 async def run_task_now(db: AsyncSession, task_id: int) -> int | None:

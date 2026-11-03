@@ -7,6 +7,7 @@ from fastapi import Request
 from app.core.config import settings
 
 _failures: dict[str, list[float]] = defaultdict(list)
+_windows: dict[str, list[float]] = defaultdict(list)
 _lock = asyncio.Lock()
 
 
@@ -43,3 +44,16 @@ async def record_login_failure(key: str) -> None:
 async def clear_login_failures(key: str) -> None:
     async with _lock:
         _failures.pop(key, None)
+
+
+async def allow(key: str, *, limit: int, window_seconds: int) -> bool:
+    """Sliding-window limiter used by the public read-only dashboard."""
+    async with _lock:
+        now = time.time()
+        values = [item for item in _windows.get(key, []) if now - item < window_seconds]
+        if len(values) >= max(1, limit):
+            _windows[key] = values
+            return False
+        values.append(now)
+        _windows[key] = values
+        return True

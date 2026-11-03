@@ -4,13 +4,18 @@ import type {
   AgentEvalRun,
   AgentSession,
   Candidate,
+  CityInfo,
   Community,
   ImagesData,
   Listing,
+  OpsStatus,
+  ReferenceRent,
   ReputationMention,
   ReputationOverview,
   ReputationSummary,
   Run,
+  ShareLink,
+  SourceInfo,
   Stats,
   Task,
 } from './types'
@@ -170,6 +175,13 @@ export interface AdminSettings {
   quiet: boolean
   pauseAlert: boolean
   monitorPush: boolean
+  alertPush: boolean
+  alertQueueBacklog: number
+  alertQueuedMinutes: number
+  alertDiskPct: number
+  alertBackupHours: number
+  alertCooldownMinutes: number
+  alertIntervalMinutes: number
 }
 
 export interface AuthUser {
@@ -279,6 +291,21 @@ export interface AdminService {
   agentEval(): Promise<AgentEvalData>
   runAgentEval(): Promise<AgentEvalRun>
   agentCost(days?: number): Promise<AgentCostData>
+  opsStatus(): Promise<OpsStatus>
+  runOpsCheck(force?: boolean): Promise<Record<string, unknown>>
+  shareLinks(): Promise<ShareLink[]>
+  createShareLink(label: string, expiresDays: number): Promise<ShareLink>
+  revokeShareLink(id: number): Promise<ShareLink>
+  sources(): Promise<SourceInfo[]>
+  updateSource(code: string, enabled: boolean): Promise<SourceInfo>
+  cities(): Promise<CityInfo[]>
+  updateCity(code: string, enabled: boolean): Promise<CityInfo>
+  createTask(payload: Record<string, unknown>): Promise<Task>
+  updateTask(id: number, payload: Record<string, unknown>): Promise<Task>
+  disableTask(id: number): Promise<Task>
+  referenceRents(city?: string): Promise<ReferenceRent[]>
+  importReferenceRents(city: string, rows: Array<Record<string, unknown>>): Promise<Record<string, number>>
+  deleteReferenceRent(id: number): Promise<{ ok: boolean }>
 }
 
 export interface ReputationMentionInput {

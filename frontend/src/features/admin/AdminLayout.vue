@@ -15,6 +15,7 @@ import {
   Route,
   ScrollText,
   Settings,
+  ShieldCheck,
   TriangleAlert,
   X,
 } from 'lucide-vue-next'
@@ -63,6 +64,7 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
   {
     label: '运营',
     items: [
+      { to: '/admin/ops', label: '运维', icon: ShieldCheck, badge: 'P2' },
       { to: '/admin/providers', label: 'API 管理', icon: Plug },
       { to: '/admin/tasks', label: '采集任务', icon: Clock3, badge: 'API' },
       { to: '/admin/logs', label: '运行日志', icon: ScrollText },

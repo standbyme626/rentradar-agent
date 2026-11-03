@@ -33,6 +33,13 @@ const form = reactive<AdminSettings>({
   quiet: true,
   pauseAlert: true,
   monitorPush: true,
+  alertPush: true,
+  alertQueueBacklog: 100,
+  alertQueuedMinutes: 30,
+  alertDiskPct: 85,
+  alertBackupHours: 26,
+  alertCooldownMinutes: 30,
+  alertIntervalMinutes: 10,
 })
 
 const usagePercent = computed(() =>
@@ -91,7 +98,7 @@ async function save() {
 }
 
 function toggle(
-  key: 'feishu' | 'digest' | 'quiet' | 'pauseAlert' | 'monitorPush',
+  key: 'feishu' | 'digest' | 'quiet' | 'pauseAlert' | 'monitorPush' | 'alertPush',
 ) {
   form[key] = !form[key]
 }
@@ -120,7 +127,7 @@ async function changePassword() {
 }
 
 const switches: Array<{
-  key: 'feishu' | 'digest' | 'quiet' | 'pauseAlert' | 'monitorPush'
+  key: 'feishu' | 'digest' | 'quiet' | 'pauseAlert' | 'monitorPush' | 'alertPush'
   label: string
 }> = [
   { key: 'feishu', label: '飞书通知' },
@@ -128,6 +135,7 @@ const switches: Array<{
   { key: 'digest', label: '09:00 日报' },
   { key: 'quiet', label: '夜间静默' },
   { key: 'pauseAlert', label: '采集暂停告警' },
+  { key: 'alertPush', label: '运维告警推送' },
 ]
 </script>
 
@@ -229,6 +237,42 @@ const switches: Array<{
         </button>
       </section>
     </div>
+
+    <section class="card mt-4 p-4">
+      <h3 class="panel-title">运维告警 <span class="hint">scheduler 每 {{ form.alertIntervalMinutes }} 分钟检查</span></h3>
+      <p class="mt-1 text-[11px] text-muted">
+        队列积压、源连续失败、Provider 熔断、磁盘占用、备份失败/过期会推飞到「运维」页并可推送飞书；同一告警在冷却窗口内不重复推送。
+      </p>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div>
+          <label class="label">队列积压阈值（个）</label>
+          <input v-model.number="form.alertQueueBacklog" type="number" min="1" class="input" />
+        </div>
+        <div>
+          <label class="label">排队超时阈值（分钟）</label>
+          <input v-model.number="form.alertQueuedMinutes" type="number" min="1" class="input" />
+        </div>
+        <div>
+          <label class="label">磁盘使用率阈值（%）</label>
+          <input v-model.number="form.alertDiskPct" type="number" min="50" max="100" class="input" />
+        </div>
+        <div>
+          <label class="label">备份过期阈值（小时）</label>
+          <input v-model.number="form.alertBackupHours" type="number" min="1" max="168" class="input" />
+        </div>
+        <div>
+          <label class="label">告警冷却（分钟）</label>
+          <input v-model.number="form.alertCooldownMinutes" type="number" min="5" class="input" />
+        </div>
+        <div>
+          <label class="label">检查间隔（分钟）</label>
+          <input v-model.number="form.alertIntervalMinutes" type="number" min="5" class="input" />
+        </div>
+      </div>
+      <button class="btn-primary mt-3" :disabled="saving" @click="save">
+        {{ saving ? '保存中…' : '保存' }}
+      </button>
+    </section>
 
     <section class="card mt-4 p-4">
       <h3 class="panel-title">账号安全 <span class="hint">{{ auth.displayName }}</span></h3>
