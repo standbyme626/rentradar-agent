@@ -53,6 +53,7 @@ def load_default_providers() -> ProviderRegistry:
     if _loaded:
         return registry
     from app.integrations.ai.modelscope import ModelScopeProvider
+    from app.integrations.ai.opencode_go import OpenCodeGoProvider
     from app.integrations.housing.beike_api import BeikeApiProvider
     from app.integrations.housing.beike_cdp import BeikeCdpProvider
     from app.integrations.maps.amap import AmapProvider
@@ -67,6 +68,7 @@ def load_default_providers() -> ProviderRegistry:
         TiandituProvider(),
         SzmcProvider(),
         AmapProvider(),
+        OpenCodeGoProvider(),
         ModelScopeProvider(),
     ):
         registry.register(provider)

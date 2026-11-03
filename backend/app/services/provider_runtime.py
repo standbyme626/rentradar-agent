@@ -9,6 +9,7 @@ from app.core.logging import get_logger
 from app.integrations.base import (
     BaseProvider,
     Capability,
+    ProviderDomain,
     ProviderError,
     ProviderQuotaExceeded,
     ProviderUnavailable,
@@ -255,7 +256,7 @@ async def invoke(
         provider_cap_key = cap_key
         if cap_key == "amapMonthlyCap" and provider.meta.code != "amap":
             provider_cap_key = None
-        if cap_key == "aiDailyCap" and provider.meta.code != "modelscope_deepseek":
+        if cap_key == "aiDailyCap" and provider.meta.domain != ProviderDomain.ai:
             provider_cap_key = None
         try:
             limit = await preflight(
@@ -314,6 +315,8 @@ async def invoke_chat(
     *,
     max_tokens: int,
     temperature: float,
+    tools: list[dict] | None = None,
+    tool_choice: str | dict | None = None,
 ) -> dict:
     admin_settings = await get_admin_settings(db)
     settings_map = await _settings_map(db)
@@ -335,9 +338,11 @@ async def invoke_chat(
             continue
         started = monotonic()
         try:
-            result = await provider.chat(
-                messages, max_tokens=max_tokens, temperature=temperature
-            )
+            kwargs: dict = {"max_tokens": max_tokens, "temperature": temperature}
+            if tools and getattr(provider, "supports_tools", False):
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = tool_choice
+            result = await provider.chat(messages, **kwargs)
         except Exception as exc:
             latency = int((monotonic() - started) * 1000)
             await record_call(
