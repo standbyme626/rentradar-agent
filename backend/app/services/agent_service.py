@@ -314,6 +314,26 @@ async def _save_session(
     await db.commit()
 
 
+def _jsonable(value):
+    """Make tool results safe for JSONB (datetimes, decimals, model objects)."""
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, (datetime,)):
+        return value.isoformat()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    try:
+        from decimal import Decimal
+
+        if isinstance(value, Decimal):
+            return float(value)
+    except ImportError:  # pragma: no cover
+        pass
+    return str(value)
+
+
 def _compact_result(result: dict) -> str:
     try:
         text = json.dumps(result, ensure_ascii=False, default=str)
@@ -374,7 +394,9 @@ async def _execute_tools(
                 status=status,
                 latency_ms=latency,
                 result_summary=summary[:255],
-                result=result if isinstance(result, dict) else {"value": result},
+                result=_jsonable(
+                    result if isinstance(result, dict) else {"value": result}
+                ),
                 error=error_text,
             )
         )

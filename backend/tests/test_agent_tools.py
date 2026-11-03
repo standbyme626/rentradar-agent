@@ -69,3 +69,19 @@ def test_placeholder_resolution_uses_top_cards():
         "listing_ids": [7, 9, 11]
     }
     assert agent_tools.resolve_args({"listing_id": "$top"}, []) == {}
+
+
+def test_tool_results_are_json_safe_for_trace():
+    from datetime import UTC, datetime
+
+    from app.services.agent_service import _jsonable
+
+    payload = {
+        "seen_at": datetime(2026, 11, 4, tzinfo=UTC),
+        "items": [{"at": datetime(2026, 11, 4, tzinfo=UTC)}],
+        "nested": {"bad": object()},
+    }
+    cleaned = _jsonable(payload)
+    assert cleaned["seen_at"].startswith("2026-11-04T")
+    assert cleaned["items"][0]["at"].startswith("2026-11-04T")
+    assert isinstance(cleaned["nested"]["bad"], str)
