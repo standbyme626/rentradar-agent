@@ -79,6 +79,7 @@
 - CDP 兜底：受控 Windows Chrome `127.0.0.1:9333` → SSH 隧道 `boss-cdp-tunnel` → Windows `C:\Chrome-debug`；整轮复用同一标签页、6-12s 间隔，检测人机验证立即中止并置 `enabled=false`。
 - 链家 robots 全站 Disallow，不自动抓，只保留手动链接。
 - 命令：`python -m app.cli crawl --task-id 1 --pages 1 --sort newest --line li110460696 --transport api`
+- 分片覆盖（2026-11-04，P0/W1 第一步）：`python -m app.cli shards --line 5号线 --probe` 从筛选字典生成站点条件，探测每站 total 与跨站去重；`--pages 0` 自动抓全，`--json` 输出计划。当前只生成逐站 crawl 命令，尚未接入 scheduler。
 - 全量扫描按 `listing.raw.scope` 过滤；API 未覆盖全量（total > pages×30）时**跳过 suspect 判定**，避免误标。
 - 冷启动：首次运行 `baseline=True`，new 事件 `notified=True`，不推送；UI 显示「基线」。
 
@@ -149,6 +150,7 @@ make db / migrate / seed / api / web / worker / scheduler / backup
 cd backend
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --sort newest --line li110460696 --transport api
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --transport cdp   # CDP 兜底，需先过验证码
+.venv/bin/python -m app.cli shards --line 5号线 --stations 20 --probe   # 生成/校验站点分片
 .venv/bin/python -m app.cli enrich --task-id 1 --limit 100
 .venv/bin/python -m app.cli rescore --task-id 1 --limit 2000
 .venv/bin/python -m app.cli digest --dry-run

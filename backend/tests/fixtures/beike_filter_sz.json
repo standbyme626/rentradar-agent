@@ -1,0 +1,90 @@
+{
+  "request_id": "fixture-filter-config",
+  "status": 0,
+  "msg": "OK",
+  "data": {
+    "d": {
+      "name": "区域",
+      "type": "radio",
+      "options": [
+        {"name": "不限", "id": 0, "pinyin": "/"}
+      ]
+    },
+    "li": {
+      "name": "全深圳",
+      "type": "radio",
+      "options": [
+        {"name": "不限", "id": 0, "pinyin": "/", "children": []},
+        {
+          "name": "15号线",
+          "id": 111111,
+          "pinyin": "li111111/",
+          "children": [
+            {"id": 0, "name": "不限", "pinyin": "/"},
+            {
+              "id": 200000001,
+              "name": "前海",
+              "pinyin": "li111111s200000001/",
+              "latitude": 22.5,
+              "longitude": 113.9,
+              "is_transfer": 0,
+              "sort": 1
+            }
+          ]
+        },
+        {
+          "name": "5号线(环中线)",
+          "id": 110460696,
+          "pinyin": "li110460696/",
+          "children": [
+            {"id": 0, "name": "不限", "pinyin": "/"},
+            {
+              "id": 100021264,
+              "name": "赤湾",
+              "pinyin": "li110460696s100021264/",
+              "latitude": 22.485483,
+              "longitude": 113.904203,
+              "is_transfer": 1,
+              "sort": 1
+            },
+            {
+              "id": 24000001333516,
+              "name": "荔湾",
+              "pinyin": "li110460696s24000001333516/",
+              "latitude": 22.503907,
+              "longitude": 113.900135,
+              "is_transfer": 0,
+              "sort": 2
+            },
+            {
+              "id": 24000001333677,
+              "name": "铁路公园",
+              "pinyin": "li110460696s24000001333677/",
+              "latitude": 22.514,
+              "longitude": 113.89,
+              "is_transfer": 0,
+              "sort": 3
+            }
+          ]
+        },
+        {
+          "name": "6号线支线",
+          "id": 2420098899773741,
+          "pinyin": "li2420098899773741/",
+          "children": [
+            {"id": 0, "name": "不限", "pinyin": "/"},
+            {
+              "id": 200000002,
+              "name": "光明",
+              "pinyin": "li2420098899773741s200000002/",
+              "latitude": 22.75,
+              "longitude": 113.9,
+              "is_transfer": 0,
+              "sort": 1
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

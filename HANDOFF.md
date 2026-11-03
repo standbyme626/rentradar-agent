@@ -106,6 +106,7 @@ cd backend
 .venv/bin/python -m app.cli list-users
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --sort newest --line li110460696 --transport api
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --transport cdp   # 兜底，需先过验证码
+.venv/bin/python -m app.cli shards --line 5号线 --stations 20 --probe   # 站点分片 total/去重校验
 .venv/bin/python -m app.cli enrich --task-id 1 --limit 50
 .venv/bin/python -m app.cli rescore --task-id 1 --limit 2000
 .venv/bin/python -m app.cli digest --dry-run

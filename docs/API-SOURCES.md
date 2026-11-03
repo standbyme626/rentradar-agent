@@ -76,6 +76,23 @@ GET https://m.lianjia.com/chuzu/aj/config/filter?city_id=440300
 - 站点示例：5 号线深圳北站 `{id: 100021298, latitude: 22.616667, longitude: 114.037138, pinyin: li110460696s100021298/}`
 - 站点 pinyin 可直接用于列表 `condition`；状态：已验证
 
+**分片覆盖工具（P0/W1）**
+
+单条件 `offset` 上限 2999（30 条/页 → 最多约 3000 条），5 号线整线 total 约 6300，整线翻页抓不全；按站点拆成 `li110460696s<站点id>` 后，每个分片都能在 offset 上限内抓完。
+
+```bash
+cd backend
+.venv/bin/python -m app.cli shards --line 5号线 --stations 20
+.venv/bin/python -m app.cli shards --line 5号线 --stations 20 --pages 1 --probe
+.venv/bin/python -m app.cli shards --line 5号线 --pages 0 --probe --json
+```
+
+- `shards` 读取本接口生成站点条件，并输出逐站 `crawl --line ...` 命令；不写库。
+- `--probe` 实际请求 App 列表接口，输出每站 total / 已抓 / 跨站去重（`house_code`）/ 缺页原因；不写库。
+- `--pages 0` 按每站 total 自动抓全（仍受 3000 条 offset 上限约束）。
+- 只有探测结果为「完整」的分片才建议加 `--full-scan`，避免不完整范围误标 `suspect`。
+- 站点条件依赖 `feed_query_id` 按分片重置；`beike_api.BeikeAPIFetcher.reset_condition()` 负责切换分片前清空翻页游标。
+
 **图片**
 
 - 列表仅返回 1 张封面 `list_picture`，默认 `...jpg.280x210.jpg`
