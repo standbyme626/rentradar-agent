@@ -54,7 +54,7 @@ ALLOWED_IMAGE_SUFFIXES = (".ljcdn.com",)
 
 
 def _cache_dir() -> Path:
-    path = Path(settings.image_cache_dir)
+    path = Path(settings.image_cache_dir).resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -659,7 +659,7 @@ async def duplicate_groups(db: AsyncSession, limit: int = 1000) -> list[dict]:
 
 
 def cached_file(listing_id: int, kind: str = "cover") -> Path | None:
-    directory = Path(settings.image_cache_dir) / str(listing_id)
+    directory = Path(settings.image_cache_dir).resolve() / str(listing_id)
     if not directory.is_dir():
         return None
     for item in directory.glob(f"{kind}-*"):
