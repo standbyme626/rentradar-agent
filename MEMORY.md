@@ -208,5 +208,5 @@ curl -s -X POST http://192.168.31.197:8010/api/admin/providers/tianditu/test | p
 - **多城市/多源**：城市/来源管理 API + `/admin/ops` 开关；scheduler 单任务异常不再中断整轮；`manual` JSON/CSV 导入源（默认停用），跨源同小区/户型/租金(±3%)/面积(±5%) 去重并记 alias；`ziroom` 预留不接入。
 - **参考租金**：`reference_rents` 表 + 导入/删除 API/CLI；评分价格项有参考价时优先于挂牌中位价；没有住建局 API，当前为人工导入。
 - **CI**：`.github/workflows/ci.yml`（ruff+pytest、Postgres 迁移升降级、前端构建）。
-- **测试**：142 passed；ruff 全绿；前端 `vue-tsc` + `npm run build` 通过；迁移离线 SQL 通过。
+- **测试**：148 passed；ruff 全绿；前端 `vue-tsc` + `npm run build` 通过；迁移离线 SQL 通过。
 - **仍未验证**：生产迁移/备份/恢复、覆盖率与 Top 候选数据、iPhone 外卖样本、天地图 Key、视觉标签、58/自如真实源、住建局自动取数。详见 `docs/P2-P4-COMPLETION.md`。
