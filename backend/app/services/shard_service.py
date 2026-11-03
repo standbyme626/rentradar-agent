@@ -16,6 +16,7 @@ from app.sources import beike_api
 from app.sources.base import CaptchaRequiredError, SourceError
 
 FetcherFactory = Callable[[str], beike_api.BeikeAPIFetcher]
+ProgressCallback = Callable[[dict], None]
 DEFAULT_INTERVAL = (1.5, 3.0)
 
 
@@ -173,6 +174,7 @@ async def probe_shards(
     line_total: int | None = None,
     fetcher_factory: FetcherFactory | None = None,
     interval: tuple[float, float] = DEFAULT_INTERVAL,
+    on_progress: ProgressCallback | None = None,
 ) -> dict:
     """Probe each shard, de-duplicating listings across shards by house code.
 
@@ -201,6 +203,8 @@ async def probe_shards(
             result["overlap"] = len(codes) - len(new_codes)
             results.append(result)
             fetched_total += result["fetched"]
+            if on_progress is not None:
+                on_progress(result)
     finally:
         await fetcher.close()
 

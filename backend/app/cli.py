@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import getpass
 import json
+import sys
 
 from sqlalchemy import func, select, text
 
@@ -266,6 +267,16 @@ def _print_shard_report(output: dict) -> None:
         print(f"  {item['command']}")
 
 
+def _print_probe_progress(item: dict) -> None:
+    total = item["total"] if item["total"] is not None else "—"
+    status = "完整" if item["complete"] else (item["missing_reason"] or "未完成")
+    print(
+        f"[probe] {item['station']} total={total} pages={item['pages']} "
+        f"fetched={item['fetched']} unique={item['unique']} {status}",
+        file=sys.stderr,
+    )
+
+
 def _shard_error(exc: Exception, as_json: bool) -> None:
     payload = {"error": str(exc)}
     if as_json:
@@ -301,6 +312,7 @@ async def cmd_shards(args) -> None:
                 sort=args.sort,
                 page_size=page_size,
                 line_total=line_total,
+                on_progress=_print_probe_progress,
             )
         except SourceError as exc:
             _shard_error(exc, args.json)
