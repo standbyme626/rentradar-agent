@@ -1,4 +1,18 @@
-import type { AgentSession, Candidate, Community, Run, Stats, Task } from '../types'
+import type {
+  AgentCostData,
+  AgentEvalData,
+  AgentEvalRun,
+  AgentSession,
+  Candidate,
+  Community,
+  ImagesData,
+  ReputationMention,
+  ReputationOverview,
+  ReputationSummary,
+  Run,
+  Stats,
+  Task,
+} from '../types'
 import type {
   AdminOverview,
   AdminService,
@@ -395,5 +409,186 @@ export const mockAdminService: AdminService = {
   async auditLogs() {
     await delay(100)
     return demoAudit
+  },
+  async images() {
+    await delay(120)
+    return {
+      stats: {
+        candidates: 0,
+        downloaded: 0,
+        failed: 0,
+        analyzed: 0,
+        pending: 0,
+        suspicious: 0,
+        watch: 0,
+        vision_pending: 0,
+        vision_enabled: false,
+        duplicate_distance: 10,
+      },
+      queue: { items: [] },
+      duplicates: [],
+      vision_enabled: false,
+    } satisfies ImagesData
+  },
+  async analyzeImages(listingIds) {
+    await delay(180)
+    return {
+      id: `J-${Date.now().toString().slice(-5)}`,
+      type: 'image_analysis',
+      status: 'queued',
+      calls: Math.max(1, listingIds.length),
+      createdAt: new Date().toISOString(),
+    }
+  },
+  async reputation() {
+    await delay(120)
+    return {
+      stats: {
+        communities: 0,
+        with_evidence: 0,
+        without_evidence: 0,
+        verified: 0,
+        uncertain: 0,
+        high_risk: 0,
+        sources: 0,
+      },
+      risky: [],
+      missing: [],
+      recent: [],
+      issue_types: {},
+      sources: [],
+      half_life_days: 180,
+    } satisfies ReputationOverview
+  },
+  async reputationCommunities() {
+    await delay(100)
+    return []
+  },
+  async reputationCommunity(id) {
+    await delay(100)
+    const summary: ReputationSummary = {
+      count: 0,
+      uncertain: 0,
+      score: 0.5,
+      status: 'insufficient',
+      label: '口碑数据不足（中性分）',
+      risk: 'unknown',
+      sources: [],
+      issue_types: {},
+    }
+    return {
+      community: { id, name: '演示小区', district: '福田区' },
+      summary,
+      mentions: [],
+    }
+  },
+  async createReputationMention(payload) {
+    await delay(160)
+    return {
+      id: Date.now(),
+      source: payload.source,
+      url: payload.url ?? null,
+      title: payload.title ?? null,
+      excerpt: payload.excerpt,
+      issue_type: payload.issueType ?? null,
+      severity: payload.severity,
+      confidence: payload.confidence,
+      match_status: payload.matchStatus,
+      published_at: payload.publishedAt ?? null,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+    } satisfies ReputationMention
+  },
+  async updateReputationMention(id, matchStatus) {
+    await delay(100)
+    return {
+      id,
+      source: 'manual',
+      url: null,
+      title: null,
+      excerpt: '演示证据',
+      issue_type: 'other',
+      severity: 'low',
+      confidence: 0.5,
+      match_status: matchStatus as ReputationMention['match_status'],
+      published_at: null,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+    } satisfies ReputationMention
+  },
+  async deleteReputationMention() {
+    await delay(80)
+  },
+  async extractReputation() {
+    await delay(400)
+    return { drafts: [], note: '演示模式不调用模型。' }
+  },
+  async agentEval() {
+    await delay(120)
+    return {
+      dataset_version: '2026-11-04',
+      dataset_cases: 60,
+      latest: null,
+      history: [],
+    } satisfies AgentEvalData
+  },
+  async runAgentEval() {
+    await delay(300)
+    const metrics = {
+      intent_case_accuracy: 1,
+      intent_field_accuracy: 1,
+      tool_accuracy: 1,
+      arg_accuracy: 1,
+      schema_valid_rate: 1,
+      grounding_rate: 1,
+      guardrail_accuracy: 1,
+      overall_pass_rate: 1,
+      query_cases: 48,
+      guardrail_cases: 12,
+    }
+    return {
+      id: Date.now(),
+      version: '2026-11-04',
+      mode: 'rules',
+      total: 60,
+      passed: 60,
+      metrics,
+      cases: [],
+      duration_ms: 42,
+      created_at: new Date().toISOString(),
+    } satisfies AgentEvalRun
+  },
+  async agentCost() {
+    await delay(120)
+    return {
+      days: 7,
+      sessions: {
+        total: 0,
+        done: 0,
+        blocked: 0,
+        failed: 0,
+        running: 0,
+        fallback: 0,
+        fallback_rate: 0,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        cost: 0,
+        avg_latency_ms: 0,
+      },
+      tools: { calls: 0, errors: 0, avg_latency_ms: 0, success_rate: null },
+      guardrails: { injection_blocks: 0, pii_masked: 0, quota_blocked: 0 },
+      provider: {
+        code: 'modelscope_deepseek',
+        model: 'DeepSeek-V4.1-Flash',
+        used: 0,
+        limit: 500,
+        remaining: 500,
+        calls: 0,
+        errors: 0,
+        avg_latency_ms: 0,
+      },
+      daily: [],
+      total_sessions: 0,
+    } satisfies AgentCostData
   },
 }

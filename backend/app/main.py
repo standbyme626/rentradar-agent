@@ -7,9 +7,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import admin as admin_routes
+from app.api.routes import admin_p1 as admin_p1_routes
 from app.api.routes import admin_providers, dashboard, health, listings, tasks, ws
 from app.api.routes import agent as agent_routes
 from app.api.routes import auth as auth_routes
+from app.api.routes import maps as maps_routes
 from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
@@ -51,6 +53,8 @@ app.include_router(tasks.router)
 app.include_router(settings_routes.router)
 app.include_router(ws.router)
 app.include_router(admin_routes.router)
+app.include_router(admin_p1_routes.router)
+app.include_router(maps_routes.router)
 app.include_router(admin_providers.router)
 app.include_router(agent_routes.router)
 

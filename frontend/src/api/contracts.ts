@@ -1,4 +1,19 @@
-import type { AgentSession, Candidate, Community, Listing, Run, Stats, Task } from './types'
+import type {
+  AgentCostData,
+  AgentEvalData,
+  AgentEvalRun,
+  AgentSession,
+  Candidate,
+  Community,
+  ImagesData,
+  Listing,
+  ReputationMention,
+  ReputationOverview,
+  ReputationSummary,
+  Run,
+  Stats,
+  Task,
+} from './types'
 
 export type PlanStatus = 'done' | 'now' | 'pending' | 'failed'
 
@@ -184,7 +199,7 @@ export interface AuditLogEntry {
 
 export interface Job {
   id: string
-  type: 'analysis' | 'sampling' | 'geocode' | 'task'
+  type: 'analysis' | 'sampling' | 'geocode' | 'task' | 'image_analysis'
   status: 'queued' | 'running' | 'done' | 'failed'
   calls?: number
   createdAt: string
@@ -248,6 +263,42 @@ export interface AdminService {
   enqueueGeocode(communityIds: number[]): Promise<Job>
   annotateSession(sessionId: string, label: string): Promise<void>
   auditLogs(limit?: number): Promise<AuditLogEntry[]>
+  images(): Promise<ImagesData>
+  analyzeImages(listingIds: number[], limit?: number): Promise<Job>
+  reputation(): Promise<ReputationOverview>
+  reputationCommunities(q: string): Promise<Array<{ id: number; name: string; district: string | null }>>
+  reputationCommunity(id: number): Promise<{
+    community: { id: number; name: string; district: string | null }
+    summary: ReputationSummary
+    mentions: ReputationMention[]
+  }>
+  createReputationMention(payload: ReputationMentionInput): Promise<ReputationMention>
+  updateReputationMention(id: number, matchStatus: string): Promise<ReputationMention>
+  deleteReputationMention(id: number): Promise<void>
+  extractReputation(communityId: number, text: string): Promise<{ drafts: ReputationDraft[]; note: string }>
+  agentEval(): Promise<AgentEvalData>
+  runAgentEval(): Promise<AgentEvalRun>
+  agentCost(days?: number): Promise<AgentCostData>
+}
+
+export interface ReputationMentionInput {
+  communityId: number
+  source: string
+  url?: string | null
+  title?: string | null
+  excerpt: string
+  issueType?: string | null
+  severity: 'low' | 'medium' | 'high'
+  confidence: number
+  matchStatus: 'verified' | 'uncertain' | 'rejected'
+  publishedAt?: string | null
+}
+
+export interface ReputationDraft {
+  excerpt: string
+  issue_type: string
+  severity: 'low' | 'medium' | 'high'
+  confidence: number
 }
 
 export type ProviderDomain =

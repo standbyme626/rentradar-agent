@@ -64,6 +64,17 @@ class Settings(BaseSettings):
         "deepseek-ai/DeepSeek-V4.1-Flash-1017",
         validation_alias="MODELSCOPE_MODEL",
     )
+    image_cache_dir: str = Field("data/images", validation_alias="APP_IMAGE_CACHE_DIR")
+    image_max_bytes: int = Field(6_000_000, validation_alias="APP_IMAGE_MAX_BYTES")
+    image_timeout_seconds: int = Field(15, validation_alias="APP_IMAGE_TIMEOUT_SECONDS")
+    image_proxy: str = Field("", validation_alias="APP_IMAGE_PROXY")
+    image_vision_enabled: bool = Field(
+        False, validation_alias="APP_IMAGE_VISION_ENABLED"
+    )
+    map_tile_cache_dir: str = Field(
+        "data/map-tiles", validation_alias="APP_MAP_TILE_CACHE_DIR"
+    )
+    map_tile_ttl_days: int = Field(30, validation_alias="APP_MAP_TILE_TTL_DAYS")
 
     @property
     def cors_origin_list(self) -> list[str]:

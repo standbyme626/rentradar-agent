@@ -25,6 +25,7 @@ class Capability(StrEnum):
     rent_reference = "rent_reference"
     reputation = "reputation"
     image_tagging = "image_tagging"
+    map_tile = "map_tile"
     chat = "chat"
 
 

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Listing, ListingStatus, PoiCache
-from app.services import commute_service
+from app.services import commute_service, reputation_service
 from app.services.settings_service import destination_key, get_commute_destination
 
 
@@ -183,8 +183,18 @@ async def score_listing(
     reasons["convenience"] = convenience_reason
     total += 10 * convenience_score
 
-    reasons["reputation"] = "暂无口碑数据"
-    total += 10 * 0.5
+    reputation_summary = await reputation_service.community_summary(
+        db, listing.community_id
+    )
+    reputation_score, reputation_reason, reputation_status = (
+        reputation_service.summarize_for_score(reputation_summary)
+    )
+    reasons["reputation"] = reputation_reason
+    reasons["reputation_status"] = reputation_status
+    reasons["reputation_evidence"] = int(
+        (reputation_summary or {}).get("count") or 0
+    )
+    total += 10 * reputation_score
 
     age_hours = _hours_since(listing.first_seen_at)
     if age_hours <= 6:
@@ -213,7 +223,7 @@ async def score_listing(
         "commute": round(25 * commute_score, 1),
         "condition": round(15 * condition, 1),
         "convenience": round(10 * convenience_score, 1),
-        "reputation": 5.0,
+        "reputation": round(10 * reputation_score, 1),
         "freshness": round(5 * freshness, 1),
         "risk": -risk_penalty,
     }

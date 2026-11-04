@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Check, Circle, Loader2, X } from 'lucide-vue-next'
-import type { AgentSession } from '@/api/types'
+import type { AgentCostData, AgentEvalData, AgentSession } from '@/api/types'
 import { adminApi } from '@/api/services/admin'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import AppTabs from '@/components/ui/AppTabs.vue'
@@ -16,6 +16,13 @@ const selected = ref<AgentSession | null>(null)
 const sessions = ref<AgentSession[]>([])
 const loading = ref(true)
 const loadError = ref('')
+const evalData = ref<AgentEvalData | null>(null)
+const evalLoading = ref(false)
+const evalError = ref('')
+const running = ref(false)
+const costData = ref<AgentCostData | null>(null)
+const costLoading = ref(false)
+const costError = ref('')
 
 async function loadSessions() {
   loading.value = true
@@ -28,7 +35,52 @@ async function loadSessions() {
     loading.value = false
   }
 }
+
+async function loadEval(refresh = false) {
+  if (evalData.value && !refresh) return
+  evalLoading.value = true
+  evalError.value = ''
+  try {
+    evalData.value = await adminApi.agentEval()
+  } catch {
+    evalError.value = '评测数据加载失败'
+  } finally {
+    evalLoading.value = false
+  }
+}
+
+async function loadCost(refresh = false) {
+  if (costData.value && !refresh) return
+  costLoading.value = true
+  costError.value = ''
+  try {
+    costData.value = await adminApi.agentCost(7)
+  } catch {
+    costError.value = '成本数据加载失败'
+  } finally {
+    costLoading.value = false
+  }
+}
+
 onMounted(loadSessions)
+watch(tab, (value) => {
+  if (value === 'evals') loadEval()
+  if (value === 'cost') loadCost()
+})
+
+async function runEval() {
+  if (running.value) return
+  running.value = true
+  try {
+    await adminApi.runAgentEval()
+    toast('基线评测已完成')
+    await loadEval(true)
+  } catch {
+    toast('评测运行失败，请稍后重试')
+  } finally {
+    running.value = false
+  }
+}
 
 async function annotate(sessionId: string, label: string) {
   try {
@@ -43,7 +95,7 @@ const tabs = [
   { key: 'trace', label: '会话与 Trace' },
   { key: 'evals', label: '评测与反馈' },
   { key: 'cost', label: '成本与护栏' },
-  { key: 'ops', label: '版本与告警' },
+  { key: 'ops', label: '版本与限制' },
 ]
 
 const filtered = computed(() =>
@@ -57,79 +109,57 @@ const totalSessions = computed(() => sessions.value.length)
 const doneSessions = computed(() => sessions.value.filter((item) => item.status === 'done').length)
 const runningSessions = computed(() => sessions.value.filter((item) => item.status === 'running').length)
 const blockedSessions = computed(() => sessions.value.filter((item) => item.status === 'blocked').length)
-const avgAmap = computed(() => {
-  const values = sessions.value.map((item) => Number(item.amap)).filter(Number.isFinite)
-  return values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1) : '—'
-})
 const avgLatency = computed(() => {
   const values = sessions.value
     .map((item) => Number.parseFloat(String(item.latency)))
     .filter(Number.isFinite)
   return values.length ? `${(values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)}s` : '—'
 })
-
-const spans = [
-  { label: 'LLM 规划', left: 0, width: 14, type: 'llm', time: '1.1s' },
-  { label: 'search_listings', left: 14, width: 1, type: 'io', time: '12ms' },
-  { label: 'commute ×6', left: 15, width: 36, type: 'tool', time: '4.1s' },
-  { label: 'fetch_detail ×3', left: 51, width: 30, type: 'io', time: '5.2s' },
-  { label: 'analyze_images ×3', left: 81, width: 8, type: 'tool', time: '1.2s' },
-  { label: 'LLM 汇总', left: 89, width: 11, type: 'llm', time: '0.9s' },
-]
-
-const evalCards = [
-  { name: 'Groundedness', score: '0.92', note: '阈值 0.85 · 9/9 通过', state: 'ok' },
-  { name: '答案相关性', score: '0.88', note: '阈值 0.80 · 8/9 通过', state: 'ok' },
-  { name: '工具正确性', score: '0.96', note: '阈值 0.90 · 9/9 通过', state: 'ok' },
-  { name: '参数正确性', score: '0.84', note: '阈值 0.90 · 1 次预算参数错误', state: 'warn' },
-  { name: '计划质量', score: '0.86', note: '阈值 0.85 · 1 次冗余调用', state: 'warn' },
-  { name: '安全性', score: '1.00', note: '无违规 · 无自动下单', state: 'ok' },
-]
-
-const funnel = [
-  ['12', '会话'],
-  ['9', '完成推荐'],
-  ['7', '打开详情'],
-  ['5', '对比'],
-  ['2', '保存监控'],
-  ['1', '联系'],
-]
-
-const reviews = [
-  ['S-1035', '证据不足 · 只有封面', '0.71', '待复核'],
-  ['S-1032', '负反馈 · 通勤太长', '0.78', '待复核'],
-  ['S-1028', '工具参数错误', '0.84', '已复核'],
-]
-
-const toolReliability = [
-  ['commute', '18', '1 timeout', '1 成功', '620ms', '38%', '正常'],
-  ['poi', '6', '0', '0', '210ms', '67%', '正常'],
-  ['fetch_detail', '9', '1 403', '回退封面', '2.1s', '0%', '部分'],
-  ['analyze_images', '0', '—', '—', '—', '—', '未接入'],
-]
-
-const versions = [
-  ['agent v0.3.2 / prompt v7', '12', '75%', '14.2s', '0.91', '¥0.010', '当前'],
-  ['agent v0.3.1 / prompt v6', '48', '67%', '16.8s', '0.86', '¥0.012', '上一版'],
-]
-
-const slos = [
-  ['可用性', '99.6%'],
-  ['p95 端到端', '< 15s'],
-  ['任务成功率', '> 70%'],
-  ['Groundedness', '> 0.85'],
-  ['工具错误率', '< 5%'],
-  ['单会话成本', '< ¥0.05'],
-]
-
-const alertRules = [
-  ['工具错误率', '> 10% / 1h', '飞书', '正常'],
-  ['p95 端到端', '> 20s / 15min', '飞书', '正常'],
-  ['Groundedness', '< 0.80 / 24h', '飞书 + 邮件', '1 次'],
-  ['单会话高德', '> 15 次', '硬停止', '生效'],
-  ['月度高德', '> 80%（4000）', '飞书', '正常'],
-  ['负反馈率', '> 20% / 24h', '飞书', '正常'],
-]
+const toolCallCount = computed(() =>
+  sessions.value.reduce((sum, item) => sum + (item.toolCalls?.length ?? 0), 0),
+)
+const injectionBlocks = computed(
+  () =>
+    sessions.value.filter((item) =>
+      (item.guardrails ?? []).some((guard) => (guard.flags ?? []).includes('prompt_injection_blocked')),
+    ).length,
+)
+const passRate = computed(() => {
+  const latest = evalData.value?.latest
+  return latest ? `${latest.passed} / ${latest.total}` : '—'
+})
+const latestEval = computed(() => evalData.value?.latest ?? null)
+const evalMetrics = computed(() => latestEval.value?.metrics ?? null)
+const failedCases = computed(() =>
+  (latestEval.value?.cases ?? []).filter((item) => !item.passed).slice(0, 8),
+)
+const evalCards = computed(() => {
+  const metrics = evalMetrics.value
+  if (!metrics) return []
+  return [
+    ['意图解析', metrics.intent_case_accuracy, '整句条件全部正确'],
+    ['字段准确率', metrics.intent_field_accuracy, '预算/通勤/户型/区域/标签'],
+    ['工具选择', metrics.tool_accuracy, '规则计划与黄金标签一致'],
+    ['参数准确率', metrics.arg_accuracy, '检索参数与解析条件一致'],
+    ['Schema 合法', metrics.schema_valid_rate, '白名单工具 + 参数校验'],
+    ['接地性', metrics.grounding_rate, '回答只使用卡片真实数值'],
+    ['护栏', metrics.guardrail_accuracy, '注入拦截 + PII 脱敏'],
+    ['整体通过', metrics.overall_pass_rate, `${metrics.query_cases} 查询 + ${metrics.guardrail_cases} 护栏`],
+  ] as Array<[string, number, string]>
+})
+const costSessions = computed(() => costData.value?.sessions)
+const costTools = computed(() => costData.value?.tools)
+const costGuardrails = computed(() => costData.value?.guardrails)
+const costProvider = computed(() => costData.value?.provider)
+const quotaPct = computed(() => {
+  const provider = costProvider.value
+  if (!provider || !provider.limit) return 0
+  return Math.min(100, Math.round((provider.used / provider.limit) * 100))
+})
+const dailyMax = computed(() => {
+  const values = (costData.value?.daily ?? []).map((item) => item.sessions)
+  return Math.max(1, ...values)
+})
 
 function statusClass(value: AgentSession['status']) {
   if (value === 'done') return 'tag-green'
@@ -155,23 +185,35 @@ function planClass(value: string) {
 function openTrace(session: AgentSession) {
   selected.value = session
 }
+
+function num(value: number | null | undefined) {
+  return value == null ? '—' : value.toLocaleString('zh-CN')
+}
+
+function money(value: number | null | undefined) {
+  return value == null ? '—' : `¥${value.toFixed(4)}`
+}
+
+function signalClass(value: number) {
+  return value >= 0.95 ? 'text-forest' : value >= 0.85 ? 'text-amber' : 'text-coral'
+}
 </script>
 
 <template>
   <div>
     <h2 class="text-[20px] font-bold tracking-tight">Agent 监控</h2>
-    <p class="mt-1 text-[12.5px] text-muted">看每一次找房会话：计划、工具调用、预算、推荐和反馈。规则版 Agent 已接入，会话来自真实后端。</p>
+    <p class="mt-1 text-[12.5px] text-muted">每一次找房会话的计划、工具调用、护栏与成本都来自真实记录；评测集是确定性规则基线，不调用外部模型。</p>
     <div class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-2.5 text-[11px] leading-5 text-forest">
-      <b>Phase 3：</b>规则版 Agent 已接入；会话、Trace、工具为真实记录，评测/成本/护栏面板仍为设计预览。
+      <b>P1 运行时：</b>白名单只读工具（检索/详情/对比/通勤/价格）+ 显式保存监控；预算硬停、PII 脱敏、注入拦截；每次工具调用落 <code>agent_tool_calls</code>，可回放。视觉大模型与 LLM-as-judge 尚未授权，不做。
     </div>
 
     <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
       <AdminKpi label="会话总数" :value="totalSessions" :sub="`运行中 ${runningSessions}`" />
       <AdminKpi label="完成推荐" :value="`${doneSessions} / ${totalSessions}`" :sub="totalSessions ? `${Math.round((doneSessions / totalSessions) * 100)}%` : '—'" tone="green" />
+      <AdminKpi label="预算拦截" :value="blockedSessions" sub="未调外部模型" tone="coral" />
       <AdminKpi label="平均耗时" :value="avgLatency" sub="真实会话" />
-      <AdminKpi label="平均高德" :value="`${avgAmap} 次`" sub="单会话上限 15" tone="amber" />
-      <AdminKpi label="预算拦截" :value="blockedSessions" sub="未调外部接口" tone="coral" />
-      <AdminKpi label="用户采纳" value="—" sub="埋点待接入" />
+      <AdminKpi label="工具调用" :value="toolCallCount" sub="含失败步骤" />
+      <AdminKpi label="评测通过" :value="passRate" sub="规则基线" tone="green" />
     </div>
 
     <AppTabs v-model="tab" :tabs="tabs" class="mt-4" />
@@ -200,7 +242,7 @@ function openTrace(session: AgentSession) {
                 <th class="px-3 py-2.5 font-semibold">阶段</th>
                 <th class="px-3 py-2.5 font-semibold">候选</th>
                 <th class="px-3 py-2.5 font-semibold">工具</th>
-                <th class="px-3 py-2.5 font-semibold">高德</th>
+                <th class="px-3 py-2.5 font-semibold">模型</th>
                 <th class="px-3 py-2.5 font-semibold">耗时</th>
                 <th class="px-3 py-2.5 font-semibold">状态</th>
                 <th class="px-3 py-2.5" />
@@ -214,11 +256,11 @@ function openTrace(session: AgentSession) {
                 @click="openTrace(item)"
               >
                 <td class="mono px-3 py-2.5">{{ item.id }}</td>
-                <td class="px-3 py-2.5 font-semibold">{{ item.query }}</td>
+                <td class="max-w-[240px] truncate px-3 py-2.5 font-semibold">{{ item.query }}</td>
                 <td class="px-3 py-2.5 text-muted">{{ item.stage }}</td>
                 <td class="mono px-3 py-2.5">{{ item.cand }}</td>
-                <td class="mono px-3 py-2.5">{{ item.tools }}</td>
-                <td class="mono px-3 py-2.5">{{ item.amap }}</td>
+                <td class="mono px-3 py-2.5">{{ item.toolCalls?.length ?? item.tools }}</td>
+                <td class="px-3 py-2.5 text-muted">{{ item.fallback ? '规则兜底' : item.model || '规则版' }}</td>
                 <td class="mono px-3 py-2.5">{{ item.latency }}</td>
                 <td class="px-3 py-2.5">
                   <span :class="statusClass(item.status)">
@@ -240,327 +282,252 @@ function openTrace(session: AgentSession) {
                 </td>
               </tr>
               <tr v-else-if="!filtered.length">
-                <td colspan="9" class="px-4 py-8 text-center text-[11.5px] text-faint">
-                  暂无 Agent 会话；Phase 3 接入运行时后显示。
-                </td>
+                <td colspan="9" class="px-4 py-8 text-center text-[11.5px] text-faint">暂无会话；在用户端发起一次找房即可看到真实 trace。</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-2.5 text-[10.5px] leading-5 text-forest">
-          成功会话的典型路径：本地检索 0 次外部调用 → 只对 6 套算通勤 → 只对 3 套抓详情 → 推荐 3 套。预算拦截的会话完全不调外部接口。
-        </div>
-      </section>
-
-      <div class="mt-4 grid gap-4 xl:grid-cols-2">
-        <section class="card p-4">
-          <h3 class="panel-title">预算与护栏</h3>
-          <div class="mt-2 text-[11px] text-muted">单会话高德 <b class="float-right text-ink">7.2 / 15</b></div>
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sand"><div class="h-full w-[48%] rounded-full bg-forest" /></div>
-          <div class="mt-3 text-[11px] text-muted">本月高德 <b class="float-right text-ink">876 / 5000</b></div>
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sand"><div class="h-full w-[17.5%] rounded-full bg-amber" /></div>
-          <div class="mt-2 divide-y divide-line text-[11.5px]">
-            <div class="flex items-center py-2"><span>自动下单</span><span class="ml-auto tag-green">禁用</span></div>
-            <div class="flex items-center py-2"><span>工具白名单</span><span class="ml-auto tag-neutral">6 / 8</span></div>
-            <div class="flex items-center py-2"><span>超限拦截</span><span class="ml-auto tag-amber">2 次</span></div>
-            <div class="flex items-center py-2"><span>图片/AI 调用</span><span class="ml-auto tag-neutral">未接入</span></div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-xl border border-line bg-paper2 px-3 py-2 text-[10.5px] leading-5 text-muted">
+            工具只读；<b class="text-ink">save_monitor</b> 仅在明确“保存/监控”时由规则路径调用。
           </div>
-        </section>
-
-        <section class="card p-4">
-          <h3 class="panel-title">今日工具调用</h3>
-          <div class="mt-2 divide-y divide-line text-[11px]">
-            <div v-for="item in [
-              ['search_listings', '本地检索 · 0 外部', '24'],
-              ['commute', '高德 · 缓存 38%', '18'],
-              ['poi', '高德 · 缓存 67%', '6'],
-              ['fetch_detail', 'CDP · 候选 only', '9'],
-              ['analyze_images', '未接入', '0'],
-              ['save_monitor', '飞书 · 本地', '3'],
-            ]" :key="item[0]" class="flex items-center gap-3 py-2">
-              <span class="w-[105px] font-semibold text-ink">{{ item[0] }}</span>
-              <span class="flex-1 text-muted">{{ item[1] }}</span>
-              <span class="mono text-faint">{{ item[2] }}</span>
-            </div>
+          <div class="rounded-xl border border-line bg-paper2 px-3 py-2 text-[10.5px] leading-5 text-muted">
+            注入拦截会话 <b class="text-ink">{{ injectionBlocks }}</b> 个：不送外部模型，只走规则。
           </div>
-        </section>
-
-        <section class="card p-4">
-          <h3 class="panel-title">反馈与质量</h3>
-          <div class="mt-2 divide-y divide-line text-[11.5px]">
-            <div class="flex items-center py-2"><span>推荐采纳</span><b class="ml-auto">4 / 9</b></div>
-            <div class="flex items-center py-2"><span>详情打开</span><b class="ml-auto">7</b></div>
-            <div class="flex items-center py-2"><span>对比</span><b class="ml-auto">5</b></div>
-            <div class="flex items-center py-2"><span>保存监控</span><b class="ml-auto">2</b></div>
-            <div class="flex items-center py-2"><span>负反馈</span><span class="ml-auto tag-amber">1 · 通勤太长</span></div>
-            <div class="flex items-center py-2"><span>低置信</span><span class="ml-auto tag-amber">1 · 证据不足</span></div>
+          <div class="rounded-xl border border-line bg-paper2 px-3 py-2 text-[10.5px] leading-5 text-muted">
+            预算拦截会让会话状态变为 <b class="text-ink">blocked</b>，SSE 仍返回规则版结果。
           </div>
-        </section>
-
-        <section class="card p-4">
-          <h3 class="panel-title">保存的监控</h3>
-          <div class="mt-2 divide-y divide-line text-[11.5px]">
-            <div class="flex items-center py-2"><span>5 号线 · ≤4500 · 通勤≤40</span><span class="ml-auto tag-green">新 2</span></div>
-            <div class="flex items-center py-2"><span>龙岗 · 3000 · 两居</span><span class="ml-auto tag-neutral">新 0</span></div>
-            <div class="flex items-center py-2"><span>会展中心 · 步行接驳</span><span class="ml-auto tag-green">新 1</span></div>
+          <div class="rounded-xl border border-line bg-paper2 px-3 py-2 text-[10.5px] leading-5 text-muted">
+            trace 每次调用都记录参数、耗时、摘要与错误，可在右侧抽屉回放。
           </div>
-        </section>
-      </div>
-
-      <section class="card mt-4 p-4">
-        <h3 class="panel-title">Trace 示例 · S-1042 <span class="hint">8.1s · 9 次工具 · 3 次 LLM</span></h3>
-        <div class="mt-3 space-y-2">
-          <div v-for="span in spans" :key="span.label" class="grid grid-cols-[120px_1fr_44px] items-center gap-2 text-[10.5px]">
-            <span class="truncate text-muted">{{ span.label }}</span>
-            <div class="relative h-[18px] overflow-hidden rounded border border-line bg-paper2">
-              <div
-                class="absolute inset-y-0 rounded-sm opacity-80"
-                :class="span.type === 'llm' ? 'bg-amber' : span.type === 'io' ? 'bg-[#8aa7b3]' : 'bg-forest'"
-                :style="{ left: `${span.left}%`, width: `${span.width}%` }"
-              />
-            </div>
-            <span class="mono text-right text-faint">{{ span.time }}</span>
-          </div>
-        </div>
-        <div class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-          LLM：Qwen2.5-72B · 3.2k in / 1.1k out · cached 1.8k · ¥0.012 · TTFT 0.6s。工具：9 次调用，2 次缓存命中；高德 7 次，图片 AI 0 次（未接入）。
         </div>
       </section>
     </div>
 
     <!-- Evals -->
     <div v-else-if="tab === 'evals'" class="mt-4">
-      <div class="grid gap-4 xl:grid-cols-2">
+      <div v-if="evalLoading" class="rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11px] text-muted">评测数据加载中…</div>
+      <div v-else-if="evalError" class="rounded-xl border border-coral/25 bg-coral-soft px-3.5 py-3 text-[11px] text-coral">{{ evalError }}</div>
+      <template v-else>
         <section class="card p-4">
-          <h3 class="panel-title">在线评测 <span class="hint">LLM-as-judge · 每次会话</span></h3>
-          <div class="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3">
-            <div v-for="item in evalCards" :key="item.name" class="rounded-xl border border-line bg-paper2 px-3 py-2.5">
-              <div class="text-[10px] text-muted">{{ item.name }}</div>
-              <div class="mt-0.5 text-[20px] font-bold" :class="item.state === 'ok' ? 'text-forest' : 'text-amber'">{{ item.score }}</div>
-              <div class="text-[9px] leading-4 text-faint">{{ item.note }}</div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="panel-title">黄金集回归</h3>
+            <span class="tag-neutral">{{ evalData?.dataset_version }} · {{ evalData?.dataset_cases }} 条</span>
+            <span class="tag-neutral">规则基线 · 不调模型</span>
+            <button class="btn btn-sm ml-auto" :disabled="running" @click="runEval">
+              <Loader2 v-if="running" :size="13" class="animate-spin" />
+              {{ running ? '运行中…' : '运行基线评测' }}
+            </button>
+          </div>
+          <div v-if="!latestEval" class="mt-4 rounded-xl border border-dashed border-line px-4 py-10 text-center text-[12px] text-faint">
+            还没有评测记录。点击“运行基线评测”生成第一份可回归基线。
+          </div>
+          <template v-else>
+            <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+              <span class="tag-green">{{ latestEval.passed }} / {{ latestEval.total }} 通过</span>
+              <span>{{ new Date(latestEval.created_at).toLocaleString('zh-CN') }}</span>
+              <span>耗时 {{ latestEval.duration_ms }}ms</span>
+              <span>版本 {{ latestEval.version }}</span>
             </div>
-          </div>
-          <div class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-2.5 text-[10.5px] leading-5 text-forest">
-            评测对象是 trace，不是最终文案：工具选择、参数、证据、计划都要单独打分。
-          </div>
-        </section>
-
-        <section class="card p-4">
-          <h3 class="panel-title">业务结果漏斗 <span class="hint">{{ totalSessions }} 个会话</span></h3>
-          <div class="mt-3 flex overflow-hidden rounded-xl border border-line">
-            <div v-for="(step, index) in funnel" :key="step[1]" class="flex-1 border-r border-line bg-paper2 px-2 py-2.5 text-center last:border-r-0">
-              <div class="text-[17px] font-bold leading-5">{{ step[0] }}</div>
-              <div class="text-[9px] text-muted">{{ step[1] }}</div>
+            <div class="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <div v-for="card in evalCards" :key="card[0]" class="rounded-xl border border-line bg-paper2 px-3 py-2.5">
+                <div class="text-[10px] text-muted">{{ card[0] }}</div>
+                <div class="mt-0.5 text-[20px] font-bold" :class="signalClass(card[1])">{{ Math.round(card[1] * 100) }}%</div>
+                <div class="text-[9px] leading-4 text-faint">{{ card[2] }}</div>
+              </div>
             </div>
-          </div>
-          <div class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-            从“推荐”到“打开详情”的转化 78%；从“对比”到“保存监控”只有 40%，说明对比页的决策信息还不够。
-          </div>
-        </section>
-      </div>
-
-      <div class="mt-4 grid gap-4 xl:grid-cols-2">
-        <section class="card p-4">
-          <h3 class="panel-title">人工复核队列 <span class="hint">采样 10% · 2 条待处理</span></h3>
-          <table class="mt-2 w-full text-left text-[11.5px]">
-            <thead class="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-              <tr><th class="py-2 font-semibold">会话</th><th class="py-2 font-semibold">原因</th><th class="py-2 font-semibold">评测分</th><th class="py-2 font-semibold">状态</th><th class="py-2" /></tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in reviews" :key="row[0]" class="border-b border-line last:border-0">
-                <td class="mono py-2.5">{{ row[0] }}</td>
-                <td class="py-2.5 text-muted">{{ row[1] }}</td>
-                <td class="py-2.5">{{ row[2] }}</td>
-                <td class="py-2.5"><span :class="row[3] === '已复核' ? 'tag-green' : 'tag-amber'">{{ row[3] }}</span></td>
-                <td class="py-2.5"><button class="btn-ghost btn-sm" @click="annotate(row[0], row[3] === '已复核' ? 'dataset' : 'review')">{{ row[3] === '已复核' ? '加入评测集' : '复核' }}</button></td>
-              </tr>
-            </tbody>
-          </table>
+          </template>
         </section>
 
-        <section class="card p-4">
-          <h3 class="panel-title">反馈闭环 <span class="hint">trace → 数据集 → 回归</span></h3>
-          <div class="mt-3 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted">
-            <span class="rounded-lg border border-line bg-paper2 px-2.5 py-1.5">生产 trace</span><span>→</span>
-            <span class="rounded-lg border border-line bg-paper2 px-2.5 py-1.5">人工/自动打分</span><span>→</span>
-            <span class="rounded-lg border border-line bg-paper2 px-2.5 py-1.5">失败样本入集</span><span>→</span>
-            <span class="rounded-lg border border-forest bg-forest-soft px-2.5 py-1.5 text-forest">回归评测</span><span>→</span>
-            <span class="rounded-lg border border-line bg-paper2 px-2.5 py-1.5">上线门槛</span>
-          </div>
-          <div class="mt-3 divide-y divide-line text-[11.5px]">
-            <div class="flex items-center py-2"><span>评测集</span><b class="ml-auto">14 条</b></div>
-            <div class="flex items-center py-2"><span>最近回归</span><b class="ml-auto">13 / 14 通过</b></div>
-            <div class="flex items-center py-2"><span>回归门槛</span><span class="ml-auto tag-green">≥ 90%</span></div>
-            <div class="flex items-center py-2"><span>用户反馈</span><b class="ml-auto">赞 3 · 踩 1</b></div>
-          </div>
-          <div class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-            没有评测的监控只是昂贵的日志；失败样本必须能回到评测集。
-          </div>
-        </section>
-      </div>
+        <div class="mt-4 grid gap-4 xl:grid-cols-2">
+          <section class="card p-4">
+            <h3 class="panel-title">历史回归 <span class="hint">最近 10 次</span></h3>
+            <div v-if="evalData?.history?.length" class="mt-2 divide-y divide-line text-[11.5px]">
+              <div v-for="item in evalData.history" :key="item.id" class="flex items-center gap-3 py-2">
+                <span class="mono text-faint">#{{ item.id }}</span>
+                <span>{{ item.version }} · {{ item.mode }}</span>
+                <span class="ml-auto" :class="item.passed === item.total ? 'text-forest' : 'text-amber'">{{ item.passed }} / {{ item.total }}</span>
+              </div>
+            </div>
+            <div v-else class="mt-3 rounded-xl border border-line bg-paper2 px-3 py-3 text-[11px] text-faint">暂无历史记录。</div>
+            <div class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
+              评测覆盖 48 条条件查询 + 12 条注入/PII 探针；指标包含意图、字段、工具、参数、Schema、接地和护栏。LLM 在线打分未接入，页面不展示编造的 judge 分数。
+            </div>
+          </section>
+
+          <section class="card p-4">
+            <h3 class="panel-title">失败样例 <span class="hint">按用例 ID 回归</span></h3>
+            <div v-if="failedCases.length" class="mt-2 divide-y divide-line text-[11.5px]">
+              <div v-for="item in failedCases" :key="item.id" class="py-2">
+                <div class="flex items-center gap-2">
+                  <span class="mono text-faint">{{ item.id }}</span>
+                  <span class="tag-coral">{{ item.kind === 'query' ? '查询' : '护栏' }}</span>
+                </div>
+                <div class="mt-1 text-muted">{{ item.message }}</div>
+              </div>
+            </div>
+            <div v-else class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-3 text-[11px] text-forest">
+              当前基线全部通过；新增失败会在这里逐条列出，并保留完整 details 供定位。
+            </div>
+          </section>
+        </div>
+      </template>
     </div>
 
     <!-- Cost -->
     <div v-else-if="tab === 'cost'" class="mt-4">
-      <div class="grid gap-4 xl:grid-cols-2">
-        <section class="card p-4">
-          <h3 class="panel-title">成本拆解 <span class="hint">今日</span></h3>
-          <div class="mt-3 grid grid-cols-2 gap-2">
-            <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">LLM</div><div class="text-[20px] font-bold">¥0.12</div><div class="text-[9px] text-faint">42k in / 12k out</div></div>
-            <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">高德</div><div class="text-[20px] font-bold">86 次</div><div class="text-[9px] text-faint">本月 876/5000</div></div>
-            <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">图片 AI</div><div class="text-[20px] font-bold">0</div><div class="text-[9px] text-faint">未接入</div></div>
-            <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">单会话成本</div><div class="text-[20px] font-bold">¥0.010</div><div class="text-[9px] text-faint">12 会话</div></div>
-          </div>
-          <div class="mt-3 text-[10.5px] leading-5 text-muted">成本按 trace 汇总：LLM token + 外部 API + 图片/OCR；每个 span 记 estimated cost，会话结束做 rollup。</div>
-          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-sand"><div class="h-full w-[17.5%] rounded-full bg-forest" /></div>
-          <div class="mt-1 text-[9.5px] text-faint">本月高德 876 / 5000（17.5%）</div>
-        </section>
+      <div v-if="costLoading" class="rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11px] text-muted">成本数据加载中…</div>
+      <div v-else-if="costError" class="rounded-xl border border-coral/25 bg-coral-soft px-3.5 py-3 text-[11px] text-coral">{{ costError }}</div>
+      <template v-else-if="costData">
+        <div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <AdminKpi label="近 7 天会话" :value="num(costSessions?.total)" :sub="`完成 ${costSessions?.done ?? 0}`" />
+          <AdminKpi label="Token" :value="num((costSessions?.prompt_tokens ?? 0) + (costSessions?.completion_tokens ?? 0))" :sub="`输入 ${num(costSessions?.prompt_tokens)}`" />
+          <AdminKpi label="模型成本" :value="money(costSessions?.cost)" sub="免费额度 · 仅计 token" tone="green" />
+          <AdminKpi label="平均耗时" :value="`${((costSessions?.avg_latency_ms ?? 0) / 1000).toFixed(1)}s`" sub="会话端到端" />
+          <AdminKpi label="规则兜底" :value="`${Math.round((costSessions?.fallback_rate ?? 0) * 100)}%`" :sub="`${costSessions?.fallback ?? 0} 个会话`" tone="amber" />
+          <AdminKpi label="预算拦截" :value="num(costSessions?.blocked)" sub="未调外部模型" tone="coral" />
+        </div>
 
-        <section class="card p-4">
-          <h3 class="panel-title">护栏与隐私 <span class="hint">执行前 / 执行中 / 输出</span></h3>
-          <div class="mt-2 divide-y divide-line text-[11.5px]">
-            <div class="flex items-center py-2"><span>输入 prompt injection 拦截</span><b class="ml-auto">1</b></div>
-            <div class="flex items-center py-2"><span>PII 脱敏（地址/电话）</span><b class="ml-auto">12 条</b></div>
-            <div class="flex items-center py-2"><span>最大步数 / 单会话</span><b class="ml-auto">12</b></div>
-            <div class="flex items-center py-2"><span>高德 / 单会话</span><b class="ml-auto">15</b></div>
-            <div class="flex items-center py-2"><span>自动下单</span><span class="ml-auto tag-green">禁用</span></div>
-            <div class="flex items-center py-2"><span>付费模型</span><span class="ml-auto tag-green">禁用</span></div>
-            <div class="flex items-center py-2"><span>工具白名单</span><b class="ml-auto">6 / 8</b></div>
-            <div class="flex items-center py-2"><span>日志保留</span><b class="ml-auto">30 天</b></div>
-          </div>
-        </section>
-      </div>
+        <div class="mt-4 grid gap-4 xl:grid-cols-2">
+          <section class="card p-4">
+            <h3 class="panel-title">模型额度 <span class="hint">今日 · 硬停</span></h3>
+            <div class="mt-3 flex items-end justify-between text-[11px] text-muted">
+              <span>{{ costProvider?.model }}</span>
+              <span class="mono text-ink">{{ costProvider?.used }} / {{ costProvider?.limit }}</span>
+            </div>
+            <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-sand">
+              <div class="h-full rounded-full" :class="quotaPct > 80 ? 'bg-coral' : 'bg-forest'" :style="{ width: `${quotaPct}%` }" />
+            </div>
+            <div class="mt-3 divide-y divide-line text-[11.5px]">
+              <div class="flex items-center py-2"><span>剩余额度</span><b class="ml-auto">{{ costProvider?.remaining ?? '—' }}</b></div>
+              <div class="flex items-center py-2"><span>近 7 天调用</span><b class="ml-auto">{{ num(costProvider?.calls) }}</b></div>
+              <div class="flex items-center py-2"><span>调用失败</span><b class="ml-auto">{{ num(costProvider?.errors) }}</b></div>
+              <div class="flex items-center py-2"><span>平均延迟</span><b class="ml-auto">{{ num(costProvider?.avg_latency_ms) }}ms</b></div>
+              <div class="flex items-center py-2"><span>图片 / 视觉模型</span><span class="ml-auto tag-neutral">未调用</span></div>
+            </div>
+            <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
+              调用前检查 <code>aiDailyCap</code>；额度不足直接返回规则版并把会话标记为预算拦截，不发出请求。
+            </div>
+          </section>
 
-      <div class="mt-4 grid gap-4 xl:grid-cols-2">
-        <section class="card p-4">
-          <h3 class="panel-title">工具可靠性 <span class="hint">今日</span></h3>
-          <table class="mt-2 w-full text-left text-[11.5px]">
-            <thead class="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-              <tr><th class="py-2 font-semibold">工具</th><th class="py-2 font-semibold">调用</th><th class="py-2 font-semibold">错误</th><th class="py-2 font-semibold">重试</th><th class="py-2 font-semibold">p95</th><th class="py-2 font-semibold">缓存</th><th class="py-2 font-semibold">状态</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in toolReliability" :key="row[0]" class="border-b border-line last:border-0">
-                <td class="py-2.5 font-semibold">{{ row[0] }}</td><td class="py-2.5">{{ row[1] }}</td><td class="py-2.5">{{ row[2] }}</td><td class="py-2.5">{{ row[3] }}</td><td class="mono py-2.5">{{ row[4] }}</td><td class="py-2.5">{{ row[5] }}</td>
-                <td class="py-2.5"><span :class="row[6] === '正常' ? 'tag-green' : row[6] === '部分' ? 'tag-amber' : 'tag-neutral'">{{ row[6] }}</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-        <section class="card p-4">
-          <h3 class="panel-title">成本异常 <span class="hint">按会话</span></h3>
-          <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-            S-1039 预算拦截：0 次外部调用，避免了一次无效高德；S-1041 8 次高德，是今日最高，但带来了保存监控。
-          </div>
-          <div class="mt-3 divide-y divide-line text-[11.5px]">
-            <div class="flex items-center py-2"><span>最高单会话高德</span><b class="ml-auto">8 次 · S-1041</b></div>
-            <div class="flex items-center py-2"><span>缓存节省</span><b class="ml-auto">约 6 次</b></div>
-            <div class="flex items-center py-2"><span>本月额度风险</span><span class="ml-auto tag-green">低 · 17.5%</span></div>
-          </div>
-        </section>
-      </div>
+          <section class="card p-4">
+            <h3 class="panel-title">工具与护栏 <span class="hint">近 7 天</span></h3>
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">工具调用</div><div class="text-[18px] font-bold">{{ num(costTools?.calls) }}</div><div class="text-[9px] text-faint">平均 {{ num(costTools?.avg_latency_ms) }}ms · 成功率 {{ costTools?.success_rate == null ? '—' : `${Math.round(costTools.success_rate * 100)}%` }}</div></div>
+              <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">工具失败</div><div class="text-[18px] font-bold">{{ num(costTools?.errors) }}</div><div class="text-[9px] text-faint">参数/占位/数据缺失</div></div>
+              <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">注入拦截</div><div class="text-[18px] font-bold">{{ num(costGuardrails?.injection_blocks) }}</div><div class="text-[9px] text-faint">未送外部模型</div></div>
+              <div class="rounded-xl border border-line bg-paper2 px-3 py-2.5"><div class="text-[10px] text-muted">PII 脱敏</div><div class="text-[18px] font-bold">{{ num(costGuardrails?.pii_masked) }}</div><div class="text-[9px] text-faint">手机号/邮箱/身份证</div></div>
+            </div>
+            <h3 class="panel-title mt-4">每日会话</h3>
+            <div v-if="costData.daily.length" class="mt-2 flex items-end gap-1.5">
+              <div v-for="item in costData.daily" :key="item.date" class="flex-1 text-center">
+                <div class="mx-auto w-full rounded-t bg-forest/70" :style="{ height: `${Math.max(4, Math.round((item.sessions / dailyMax) * 56))}px` }" />
+                <div class="mt-1 text-[9px] text-faint">{{ item.date }}</div>
+              </div>
+            </div>
+            <div v-else class="mt-2 rounded-xl border border-line bg-paper2 px-3 py-3 text-[10.5px] text-faint">暂无会话数据。</div>
+          </section>
+        </div>
+      </template>
     </div>
 
-    <!-- Ops -->
-    <div v-else class="mt-4">
-      <div class="grid gap-4 xl:grid-cols-2">
-        <section class="card p-4">
-          <h3 class="panel-title">版本与实验 <span class="hint">按版本对比</span></h3>
-          <table class="mt-2 w-full text-left text-[11.5px]">
-            <thead class="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-              <tr><th class="py-2 font-semibold">版本</th><th class="py-2 font-semibold">会话</th><th class="py-2 font-semibold">成功率</th><th class="py-2 font-semibold">p95</th><th class="py-2 font-semibold">评测分</th><th class="py-2 font-semibold">成本/会话</th><th class="py-2 font-semibold">状态</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in versions" :key="row[0]" class="border-b border-line last:border-0">
-                <td class="py-2.5 font-semibold">{{ row[0] }}</td><td class="py-2.5">{{ row[1] }}</td><td class="py-2.5">{{ row[2] }}</td><td class="py-2.5">{{ row[3] }}</td><td class="py-2.5">{{ row[4] }}</td><td class="py-2.5">{{ row[5] }}</td>
-                <td class="py-2.5"><span :class="row[6] === '当前' ? 'tag-green' : 'tag-neutral'">{{ row[6] }}</span></td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-2.5 text-[10.5px] leading-5 text-forest">
-            prompt v7 把“只对候选算通勤”写进计划约束，成功率 +8pp；回归门槛 ≥90%，低于门槛不允许上线。
-          </div>
-        </section>
-        <section class="card p-4">
-          <h3 class="panel-title">SLO <span class="hint">Agent 服务</span></h3>
-          <div class="mt-2 divide-y divide-line text-[11.5px]">
-            <div v-for="row in slos" :key="row[0]" class="flex items-center py-2"><span>{{ row[0] }}</span><b class="ml-auto">{{ row[1] }}</b></div>
-          </div>
-        </section>
-      </div>
-
-      <section class="card mt-4 p-4">
-        <h3 class="panel-title">告警规则 <span class="hint">质量优先，不只是存活</span></h3>
-        <table class="mt-2 w-full text-left text-[11.5px]">
-          <thead class="border-b border-line text-[10px] uppercase tracking-wide text-faint">
-            <tr><th class="py-2 font-semibold">规则</th><th class="py-2 font-semibold">阈值</th><th class="py-2 font-semibold">通知</th><th class="py-2 font-semibold">状态</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in alertRules" :key="row[0]" class="border-b border-line last:border-0">
-              <td class="py-2.5 font-semibold">{{ row[0] }}</td><td class="py-2.5">{{ row[1] }}</td><td class="py-2.5">{{ row[2] }}</td>
-              <td class="py-2.5"><span :class="row[3] === '正常' || row[3] === '生效' ? 'tag-green' : 'tag-amber'">{{ row[3] }}</span></td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- Ops / limitations -->
+    <div v-else class="mt-4 grid gap-4 xl:grid-cols-2">
+      <section class="card p-4">
+        <h3 class="panel-title">已接入</h3>
+        <div class="mt-3 divide-y divide-line text-[11.5px]">
+          <div class="flex items-center py-2"><span>规则版 + LLM 严格 JSON 计划</span><span class="ml-auto tag-green">已接入</span></div>
+          <div class="flex items-center py-2"><span>只读工具白名单（5 个）</span><span class="ml-auto tag-green">已接入</span></div>
+          <div class="flex items-center py-2"><span>保存监控（显式意图）</span><span class="ml-auto tag-green">已接入</span></div>
+          <div class="flex items-center py-2"><span>预算硬停 / PII / 注入护栏</span><span class="ml-auto tag-green">已接入</span></div>
+          <div class="flex items-center py-2"><span>工具 trace 持久化</span><span class="ml-auto tag-green">已接入</span></div>
+          <div class="flex items-center py-2"><span>60 条规则回归集</span><span class="ml-auto tag-green">已接入</span></div>
+        </div>
+      </section>
+      <section class="card p-4">
+        <h3 class="panel-title">明确未接入 <span class="hint">不展示假数据</span></h3>
+        <div class="mt-3 space-y-2 text-[11px] leading-5 text-muted">
+          <p><b class="text-ink">LLM 在线 judge：</b>需要单独模型与预算，本页只展示确定性基线，不伪造 groundedness 分数。</p>
+          <p><b class="text-ink">视觉分析：</b>Qwen-VL 未授权，图片页只做 dHash + 本地信号，标签/置信度标明待人工或待授权。</p>
+          <p><b class="text-ink">自动下单/外部写操作：</b>永久禁用；工具层没有该能力。</p>
+          <p><b class="text-ink">告警：</b>运行日志页与 Provider 页已有健康状态；飞书告警规则尚未做自动演练，不在此页画绿灯。</p>
+        </div>
       </section>
     </div>
 
     <AppDrawer
       :open="!!selected"
-      :title="selected ? `${selected.id} · Agent Trace` : 'Agent Trace'"
-      :subtitle="selected ? `${selected.query} · ${selected.stage}` : ''"
+      :title="selected?.id || '会话 Trace'"
+      :subtitle="selected?.query || ''"
       @close="selected = null"
     >
       <template v-if="selected">
-        <div class="rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11px] leading-6 text-muted">
-          <b class="text-ink">{{ selected.query }}</b><br />
-          {{ selected.stage }} · 候选 {{ selected.cand }} · 工具 {{ selected.tools }} · 高德 {{ selected.amap }} · {{ selected.latency }}
-        </div>
-        <div class="mt-1 text-[9.5px] text-faint">
-          模型 {{ selected.model || '规则版' }} · tokens {{ selected.promptTokens ?? 0 }} / {{ selected.completionTokens ?? 0 }} · 成本 ¥{{ (selected.cost ?? 0).toFixed(4) }}
+        <div class="flex flex-wrap gap-1.5">
+          <span :class="statusClass(selected.status)">{{ statusLabel(selected.status) }}</span>
+          <span class="tag-neutral">{{ selected.stage }}</span>
+          <span class="tag-neutral">{{ selected.latency }}</span>
+          <span class="tag-neutral">{{ selected.fallback ? '规则兜底' : selected.model || '规则版' }}</span>
+          <span class="tag-neutral">{{ selected.toolCalls?.length ?? 0 }} 次工具</span>
+          <span class="tag-neutral">{{ selected.promptTokens ?? 0 }} + {{ selected.completionTokens ?? 0 }} tok</span>
         </div>
 
-        <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">计划</h4>
-        <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-2">
-          <div v-for="step in selected.plan" :key="step[0]" class="flex items-start gap-2 border-b border-line py-1.5 last:border-0">
-            <span class="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full" :class="planClass(step[2])">
+        <h3 class="panel-title mt-4">计划</h3>
+        <div class="mt-2 space-y-1.5">
+          <div v-for="(step, index) in selected.plan" :key="index" class="flex items-start gap-2 rounded-lg border border-line bg-paper2 px-2.5 py-2">
+            <span class="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px]" :class="planClass(step[2])">
               <Check v-if="step[2] === 'done'" :size="10" />
-              <Loader2 v-else-if="step[2] === 'now'" :size="10" class="animate-spin" />
-              <Circle v-else-if="step[2] === 'pending'" :size="7" />
-              <X v-else :size="10" />
+              <Circle v-else-if="step[2] === 'now'" :size="8" />
+              <X v-else-if="step[2] === 'failed'" :size="10" />
             </span>
-            <div class="flex-1 text-[10.5px] leading-5">
-              <b class="text-ink">{{ step[0] }}</b> <span class="text-muted">· {{ step[1] }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-[11.5px] font-semibold">{{ step[0] }}</div>
+              <div class="text-[10px] leading-4 text-muted">{{ step[1] }}</div>
             </div>
             <span class="mono text-[9px] text-faint">{{ step[3] }}</span>
           </div>
+          <div v-if="!selected.plan?.length" class="text-[11px] text-faint">无计划记录。</div>
         </div>
 
-        <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">工具调用</h4>
-        <div class="mt-2 overflow-x-auto rounded-xl border border-line bg-paper2 px-3 py-2">
-          <div v-for="tool in selected.toolsList" :key="tool[0] + tool[1]" class="flex items-start gap-2 border-b border-line py-1.5 text-[10px] last:border-0">
-            <span class="w-[90px] shrink-0 font-semibold text-ink">{{ tool[0] }}</span>
-            <span class="flex-1 break-all text-muted">{{ tool[1] }}</span>
-            <span class="mono w-[42px] shrink-0 text-right text-faint">{{ tool[2] }}</span>
-            <span class="mono w-[92px] shrink-0 text-right text-faint">{{ tool[3] }}</span>
+        <h3 class="panel-title mt-4">工具调用</h3>
+        <div class="mt-2 overflow-x-auto">
+          <table class="w-full text-left text-[10.5px]">
+            <thead class="border-b border-line text-[9px] uppercase tracking-wide text-faint">
+              <tr><th class="py-2 font-semibold">步骤</th><th class="py-2 font-semibold">工具</th><th class="py-2 font-semibold">参数</th><th class="py-2 font-semibold">结果</th><th class="py-2 font-semibold">耗时</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="call in selected.toolCalls" :key="call.step" class="border-b border-line last:border-0">
+                <td class="py-2 align-top text-faint">{{ call.step }}</td>
+                <td class="py-2 align-top font-semibold">{{ call.tool }}</td>
+                <td class="mono max-w-[150px] py-2 align-top text-muted">{{ JSON.stringify(call.args) }}</td>
+                <td class="py-2 align-top" :class="call.status === 'ok' ? 'text-muted' : 'text-coral'">{{ call.error || call.summary }}</td>
+                <td class="mono py-2 align-top text-faint">{{ call.latency }}</td>
+              </tr>
+              <tr v-if="!selected.toolCalls?.length">
+                <td colspan="5" class="py-4 text-center text-faint">本次会话未记录工具调用（旧会话或纯文本路径）。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="panel-title mt-4">护栏</h3>
+        <div class="mt-2 space-y-1.5">
+          <div v-for="(guard, index) in selected.guardrails" :key="index" class="rounded-lg border border-line bg-paper2 px-2.5 py-2 text-[10.5px]">
+            <div class="flex items-center gap-2">
+              <span class="tag-neutral">{{ guard.stage }}</span>
+              <span class="text-muted">{{ guard.summary || guard.blocked || '通过' }}</span>
+              <span v-if="guard.used != null" class="mono ml-auto text-faint">{{ guard.used }} / {{ guard.limit ?? '—' }}</span>
+            </div>
+            <div v-if="guard.injections?.length" class="mt-1 text-coral">注入：{{ guard.injections.join('、') }}</div>
+            <div v-if="guard.pii_hits" class="mt-1 text-amber">已脱敏 {{ guard.pii_hits }} 处 PII（未送外部模型）</div>
           </div>
+          <div v-if="!selected.guardrails?.length" class="text-[11px] text-faint">旧会话没有护栏记录。</div>
         </div>
 
-        <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">LLM 调用</h4>
-        <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-          Qwen2.5-72B · 3.2k in / 1.1k out · cached 1.8k · ¥0.012 · TTFT 0.6s · 2 次调用
-        </div>
-
-        <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">护栏</h4>
-        <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-          高德 {{ selected.amap }} / 15 · 自动下单关闭 · 付费模型 0 · {{ selected.status === 'blocked' ? '超限拦截：未调用外部接口' : '工具白名单内' }}
-        </div>
-
-        <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">结果</h4>
-        <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">{{ selected.result }}</div>
-
-        <div class="mt-4 flex gap-2">
-          <button class="btn flex-1" @click="annotate(selected.id, 'review')">标记需复核</button>
-          <button class="btn flex-1" @click="annotate(selected.id, 'dataset')">加入评测集</button>
+        <h3 class="panel-title mt-4">回答</h3>
+        <p class="mt-2 rounded-xl border border-line bg-paper2 px-3 py-2.5 text-[11px] leading-5 text-muted">{{ selected.result || '—' }}</p>
+        <div class="mt-3 flex gap-2">
+          <button class="btn-ghost btn-sm" @click="annotate(selected.id, 'reviewed')">标记已复核</button>
+          <button class="btn-ghost btn-sm" @click="annotate(selected.id, 'dataset')">加入评测集</button>
         </div>
       </template>
     </AppDrawer>
