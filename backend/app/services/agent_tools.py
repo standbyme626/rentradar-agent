@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models import (
     AgentMonitor,
     City,
@@ -23,7 +24,6 @@ from app.models import (
     Snapshot,
     Source,
 )
-from app.core.logging import get_logger
 from app.services import commute_service, listing_service
 from app.services.settings_service import (
     destination_key,

@@ -48,7 +48,6 @@ const {
   detailLoading,
   sheetOpen,
   loading,
-  amapLabel,
   mobileResults,
   compareIds,
   comparison,
@@ -230,10 +229,6 @@ function formatDate(value: string) {
     minute: '2-digit',
   })
 }
-
-function removeCondition(label: string) {
-  toast(`移除条件（演示）：${label}`)
-}
 </script>
 
 <template>
@@ -405,11 +400,9 @@ function removeCondition(label: string) {
           <button
             v-for="chip in conditionChips"
             :key="chip.label"
-            class="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 text-[10.5px] text-muted transition hover:border-line2 hover:text-ink"
-            @click="removeCondition(chip.label)"
+            class="inline-flex items-center gap-1 rounded-full border border-line bg-paper px-2.5 py-1 text-[10.5px] text-muted"
           >
             <b class="font-semibold text-ink">{{ chip.value }}</b>
-            <X :size="11" />
           </button>
           <div class="ml-auto flex items-center gap-1.5">
             <button class="btn btn-sm" @click="store.saveMonitor()">保存监控</button>
@@ -424,9 +417,9 @@ function removeCondition(label: string) {
             <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-forest shadow-[0_0_0_3px_#e6efe9]" />
             已出 <b class="font-semibold text-ink">{{ cards.length }}</b> 套推荐
             <span class="text-line2">·</span>
-            本次高德 <b class="font-semibold text-ink">{{ amapLabel }}</b>
-            <span class="text-line2">·</span>
             本地库存排序
+            <span class="text-line2">·</span>
+            通勤缓存优先
           </div>
 
           <template v-if="activeTab === 'recs'">

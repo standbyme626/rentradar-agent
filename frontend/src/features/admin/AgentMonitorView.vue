@@ -204,7 +204,7 @@ function signalClass(value: number) {
     <h2 class="text-[20px] font-bold tracking-tight">Agent 监控</h2>
     <p class="mt-1 text-[12.5px] text-muted">每一次找房会话的计划、工具调用、护栏与成本都来自真实记录；评测集是确定性规则基线，不调用外部模型。</p>
     <div class="mt-3 rounded-xl border border-forest/15 bg-forest-soft/60 px-3.5 py-2.5 text-[11px] leading-5 text-forest">
-      <b>P1 运行时：</b>白名单只读工具（检索/详情/对比/通勤/价格）+ 显式保存监控；预算硬停、PII 脱敏、注入拦截；每次工具调用落 <code>agent_tool_calls</code>，可回放。视觉大模型与 LLM-as-judge 尚未授权，不做。
+      <b>P1 运行时：</b>白名单只读工具（检索/详情/对比/通勤/价格）+ 显式保存监控；预算硬停、PII 脱敏、注入拦截；每次工具调用落 <code>agent_tool_calls</code>，可回放。视觉标签已接 OpenCode Go（默认关闭）；LLM-as-judge 未接入，不做。
     </div>
 
     <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -448,9 +448,9 @@ function signalClass(value: number) {
         <h3 class="panel-title">明确未接入 <span class="hint">不展示假数据</span></h3>
         <div class="mt-3 space-y-2 text-[11px] leading-5 text-muted">
           <p><b class="text-ink">LLM 在线 judge：</b>需要单独模型与预算，本页只展示确定性基线，不伪造 groundedness 分数。</p>
-          <p><b class="text-ink">视觉分析：</b>Qwen-VL 未授权，图片页只做 dHash + 本地信号，标签/置信度标明待人工或待授权。</p>
+          <p><b class="text-ink">视觉分析：</b>OpenCode Go 视觉标签已接，`APP_IMAGE_VISION_ENABLED` 默认关闭；关闭时图片页只做 dHash + 本地信号。</p>
           <p><b class="text-ink">自动下单/外部写操作：</b>永久禁用；工具层没有该能力。</p>
-          <p><b class="text-ink">告警：</b>运行日志页与 Provider 页已有健康状态；飞书告警规则尚未做自动演练，不在此页画绿灯。</p>
+          <p><b class="text-ink">告警：</b>飞书告警/冷却/恢复通知已接；恢复演练尚未执行，不在此页画绿灯。</p>
         </div>
       </section>
     </div>

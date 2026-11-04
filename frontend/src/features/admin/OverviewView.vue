@@ -55,7 +55,7 @@ const toneBadge = (tone: string) =>
       <div class="action-card">
         <div class="grid h-8 w-8 place-items-center rounded-lg bg-forest-soft text-forest"><Image :size="16" /></div>
         <b>封面分析已接入</b>
-        <p>列表封面已能下载、dHash 去重并聚合重复图/低价/话术信号；视觉标签尚未授权。</p>
+        <p>列表封面已能下载、dHash 去重并聚合重复图/低价/话术信号；视觉标签可选（OpenCode Go，默认关闭）。</p>
         <RouterLink to="/admin/images" class="btn btn-sm">看图片队列</RouterLink>
       </div>
       <div class="action-card">
@@ -72,7 +72,7 @@ const toneBadge = (tone: string) =>
       <AdminKpi label="≥75 分" :value="stats.ge75" :sub="`最高 ${stats.max_score}`" />
       <AdminKpi label="有坐标 / 小区" :value="`${stats.geocoded} / ${stats.communities}`" :sub="`覆盖 ${geoCoverage}%`" />
       <AdminKpi label="有通勤 / 已评分" :value="`${scoredCommute} / ${stats.scored}`" :sub="`缺口 ${stats.listings_no_commute} 套`" tone="amber" />
-      <AdminKpi label="高德额度" value="API 管理" sub="调用与额度见数据源页" tone="amber" />
+      <AdminKpi label="通勤样本" :value="stats.commute_samples" :sub="`${stats.commute_communities} 个小区`" tone="amber" />
     </div>
 
     <div class="mt-4 grid gap-4 xl:grid-cols-2">

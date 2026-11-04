@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Minus, Plus, SlidersHorizontal } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Maximize2, Minimize2, Minus, Plus, SlidersHorizontal } from 'lucide-vue-next'
 import type { MapCommunity, MapData } from '@/api/types'
 import { mapApi } from '@/api/services/maps'
 import { useChatStore } from '@/stores/chat'
@@ -11,7 +11,8 @@ const data = ref<MapData | null>(null)
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 const message = ref('')
 const width = ref(820)
-const height = 440
+const height = ref(560)
+const expanded = ref(false)
 const center = ref<[number, number]>([114.06, 22.55])
 const zoom = ref(11)
 const commuteFilter = ref(0)
@@ -55,20 +56,20 @@ const markers = computed(() =>
       return {
         item,
         left: point.x - centerPx.value.x + width.value / 2,
-        top: point.y - centerPx.value.y + height / 2,
+        top: point.y - centerPx.value.y + height.value / 2,
       }
     })
-    .filter((marker) => marker.left > -80 && marker.left < width.value + 80 && marker.top > -40 && marker.top < height + 40),
+    .filter((marker) => marker.left > -80 && marker.left < width.value + 80 && marker.top > -40 && marker.top < height.value + 40),
 )
 const tiles = computed(() => {
   if (!data.value?.tiles.enabled || tileFailed.value) return []
   const n = 2 ** zoom.value
   const left = centerPx.value.x - width.value / 2
-  const top = centerPx.value.y - height / 2
+  const top = centerPx.value.y - height.value / 2
   const x0 = Math.floor(left / TILE)
   const x1 = Math.floor((left + width.value) / TILE)
   const y0 = Math.max(0, Math.floor(top / TILE))
-  const y1 = Math.min(n - 1, Math.floor((top + height) / TILE))
+  const y1 = Math.min(n - 1, Math.floor((top + height.value) / TILE))
   const result: Array<{ key: string; url: string; left: number; top: number }> = []
   for (let x = x0; x <= x1; x += 1) {
     for (let y = y0; y <= y1; y += 1) {
@@ -87,11 +88,11 @@ const labelTiles = computed(() => {
   if (!data.value?.tiles.enabled || tileFailed.value) return []
   const n = 2 ** zoom.value
   const left = centerPx.value.x - width.value / 2
-  const top = centerPx.value.y - height / 2
+  const top = centerPx.value.y - height.value / 2
   const x0 = Math.floor(left / TILE)
   const x1 = Math.floor((left + width.value) / TILE)
   const y0 = Math.max(0, Math.floor(top / TILE))
-  const y1 = Math.min(n - 1, Math.floor((top + height) / TILE))
+  const y1 = Math.min(n - 1, Math.floor((top + height.value) / TILE))
   const result: Array<{ key: string; url: string; left: number; top: number }> = []
   for (let x = x0; x <= x1; x += 1) {
     for (let y = y0; y <= y1; y += 1) {
@@ -158,6 +159,13 @@ function onTileError() {
   tileFailed.value = true
 }
 
+async function toggleExpand() {
+  expanded.value = !expanded.value
+  await nextTick()
+  measure()
+  fit()
+}
+
 function fit() {
   const items = data.value?.communities ?? []
   if (!items.length) return
@@ -167,13 +175,20 @@ function fit() {
   const p2 = project(Math.max(...lngs), Math.min(...lats), TILE)
   const dx = Math.max(1, p2.x - p1.x)
   const dy = Math.max(1, p2.y - p1.y)
-  const fitZoom = Math.floor(Math.log2(Math.min((width.value * 0.82) / dx, (height * 0.78) / dy)))
+  const fitZoom = Math.floor(Math.log2(Math.min((width.value * 0.82) / dx, (height.value * 0.78) / dy)))
   zoom.value = Math.max(9, Math.min(14, fitZoom))
   center.value = data.value?.center ?? center.value
 }
 
 function measure() {
   if (container.value) width.value = Math.max(320, container.value.clientWidth)
+  const viewport = window.innerHeight || 900
+  if (expanded.value) {
+    height.value = Math.max(520, viewport - 120)
+  } else {
+    const ratio = window.innerWidth < 840 ? 0.64 : 0.7
+    height.value = Math.round(Math.min(820, Math.max(500, viewport * ratio)))
+  }
 }
 
 onMounted(async () => {
@@ -196,8 +211,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-2xl border border-line bg-paper2">
-    <div class="relative h-[440px] select-none overflow-hidden" :style="{ background: '#eef3ee' }">
+  <div
+    :class="
+      expanded
+        ? 'fixed inset-2 z-[70] flex flex-col overflow-hidden rounded-2xl border border-line bg-paper shadow-2xl'
+        : 'overflow-hidden rounded-2xl border border-line bg-paper2'
+    "
+  >
+    <div
+      class="relative select-none overflow-hidden"
+      :style="{ height: `${height}px`, background: '#eef3ee' }"
+    >
       <div
         ref="container"
         class="absolute inset-0 cursor-grab active:cursor-grabbing"
@@ -302,9 +326,19 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div class="absolute right-3 top-3 z-20 rounded-full bg-paper/95 px-2 py-1 text-[9px] text-faint shadow-sm">
-        {{ data?.tiles.attribution || '© 天地图' }}
-        <span v-if="tileFailed" class="text-amber"> · 瓦片不可用，已回退坐标视图</span>
+      <div class="absolute right-3 top-3 z-20 flex items-center gap-1.5">
+        <span class="rounded-full bg-paper/95 px-2 py-1 text-[9px] text-faint shadow-sm">
+          {{ data?.tiles.attribution || '© 天地图' }}
+          <span v-if="tileFailed" class="text-amber"> · 瓦片不可用，已回退坐标视图</span>
+        </span>
+        <button
+          class="grid h-7 w-7 place-items-center rounded-lg border border-line bg-paper/95 text-muted shadow-sm hover:bg-paper2"
+          :title="expanded ? '退出全屏' : '全屏查看地图'"
+          @click="toggleExpand"
+        >
+          <Minimize2 v-if="expanded" :size="13" />
+          <Maximize2 v-else :size="13" />
+        </button>
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 text-[9.5px] text-faint">
