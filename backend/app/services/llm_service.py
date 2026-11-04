@@ -77,12 +77,17 @@ def _validate_intent(data: dict) -> dict:
     return result
 
 
-def _history_block(history: list[dict] | None, limit: int = 6) -> str:
+def _history_block(history: list[dict] | None, limit: int = 8) -> str:
     if not history:
         return ""
     lines = []
     for item in history[-limit:]:
-        role = "用户" if item.get("role") == "user" else "助手"
+        if item.get("role") == "summary":
+            role = "摘要"
+        elif item.get("role") == "user":
+            role = "用户"
+        else:
+            role = "助手"
         text = " ".join(str(item.get("text") or "").split())[:240]
         if text:
             lines.append(f"{role}: {text}")

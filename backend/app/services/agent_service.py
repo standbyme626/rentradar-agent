@@ -21,7 +21,7 @@ from app.models import (
     ListingStatus,
     Task,
 )
-from app.services import agent_tools, guardrails, llm_service
+from app.services import agent_tools, guardrails, llm_service, memory_service
 from app.services.commute_service import COMMUTE_BUCKETS
 from app.services.settings_service import (
     get_admin_settings,
@@ -703,8 +703,23 @@ async def stream(
         if session_id:
             session = await db.get(AgentSession, session_id)
         new_session = session is None
-        history = list((session.conditions or {}).get("_history") or []) if session else []
-        history = (history + [{"role": "user", "text": masked}])[-10:]
+        history = (
+            list((session.conditions or {}).get("_history") or []) if session else []
+        )
+        history_summary = (
+            str((session.conditions or {}).get("_history_summary") or "")
+            if session
+            else ""
+        )
+        history = history + [{"role": "user", "text": masked}]
+        history, history_summary = memory_service.compact(
+            history, history_summary
+        )
+        history_for_llm = (
+            [{"role": "summary", "text": history_summary}] + history
+            if history_summary
+            else history
+        )
 
         parse_meta = llm_service.merge_meta()
         plan_meta = llm_service.merge_meta()
@@ -716,7 +731,7 @@ async def stream(
             intent = None
             if allow_llm:
                 intent, parse_meta = await llm_service.parse_intent(
-                    db, masked, {}, history=history
+                    db, masked, {}, history=history_for_llm
                 )
             conditions = _merge_llm_conditions(rule, intent, masked)
             session = AgentSession(
@@ -753,7 +768,12 @@ async def stream(
         quick_saved = False
         if not new_session and "对比" in message:
             quick_text = "已经切到对比视图。差异主要在通勤、租金和面积；如果两个人住，优先看两居。"
-            base["_history"] = (history + [{"role": "assistant", "text": quick_text}])[-10:]
+            quick_history, quick_summary = memory_service.compact(
+                history + [{"role": "assistant", "text": quick_text}],
+                history_summary,
+            )
+            base["_history"] = quick_history
+            base["_history_summary"] = quick_summary
             yield {"type": "tab", "tab": "compare"}
         elif not new_session and ("图片" in message or "ai" in lower):
             detail_text = (
@@ -763,7 +783,12 @@ async def stream(
             )
             yield {"type": "ai", "text": detail_text}
             quick_text = "封面分析在管理端「图片 / AI」页；本次推荐仍基于价格、通勤和标签。"
-            base["_history"] = (history + [{"role": "assistant", "text": quick_text}])[-10:]
+            quick_history, quick_summary = memory_service.compact(
+                history + [{"role": "assistant", "text": quick_text}],
+                history_summary,
+            )
+            base["_history"] = quick_history
+            base["_history_summary"] = quick_summary
         elif not new_session and ("保存" in message or "监控" in message):
             name = _monitor_name(base)
             monitor_conditions = {
@@ -804,7 +829,12 @@ async def stream(
             await db.commit()
             yield {"type": "toast", "message": f"已保存监控：{name}"}
             quick_text = "已保存为监控条件。新匹配/降价会按监控设置推送（需在设置中开启飞书通知）。"
-            base["_history"] = (history + [{"role": "assistant", "text": quick_text}])[-10:]
+            quick_history, quick_summary = memory_service.compact(
+                history + [{"role": "assistant", "text": quick_text}],
+                history_summary,
+            )
+            base["_history"] = quick_history
+            base["_history_summary"] = quick_summary
             plan = _build_plan(
                 conditions_summary(base),
                 guard_record["summary"],
@@ -872,11 +902,11 @@ async def stream(
             steps = None
             if allow_llm and settings.agent_native_tools:
                 steps, plan_meta = await llm_service.plan_tools_native(
-                    db, masked, conditions, history=history
+                    db, masked, conditions, history=history_for_llm
                 )
             if allow_llm and not steps:
                 json_steps, json_meta = await llm_service.plan_tools(
-                    db, masked, conditions, history=history
+                    db, masked, conditions, history=history_for_llm
                 )
                 steps = json_steps
                 plan_meta = llm_service.merge_meta(plan_meta, json_meta)
@@ -890,17 +920,17 @@ async def stream(
             intent = None
             if allow_llm:
                 intent, parse_meta = await llm_service.parse_intent(
-                    db, masked, base, history=history
+                    db, masked, base, history=history_for_llm
                 )
             conditions = _merge_llm_conditions(rule, intent, masked)
             steps = None
             if allow_llm and settings.agent_native_tools:
                 steps, plan_meta = await llm_service.plan_tools_native(
-                    db, masked, conditions, history=history
+                    db, masked, conditions, history=history_for_llm
                 )
             if allow_llm and not steps:
                 json_steps, json_meta = await llm_service.plan_tools(
-                    db, masked, conditions, history=history
+                    db, masked, conditions, history=history_for_llm
                 )
                 steps = json_steps
                 plan_meta = llm_service.merge_meta(plan_meta, json_meta)
@@ -942,13 +972,16 @@ async def stream(
                 cards,
                 conditions,
                 tool_results=tool_results,
-                history=history,
+                history=history_for_llm,
             )
         llm_meta = llm_service.merge_meta(parse_meta, plan_meta, answer_meta)
         answer = llm_answer or _answer_for(cards, conditions)
-        conditions["_history"] = (
-            history + [{"role": "assistant", "text": answer}]
-        )[-10:]
+        history, history_summary = memory_service.compact(
+            history + [{"role": "assistant", "text": answer}],
+            history_summary,
+        )
+        conditions["_history"] = history
+        conditions["_history_summary"] = history_summary
         if inspection["injections"]:
             answer = "检测到疑似指令覆盖/提示词探测，本次只按本地规则处理。" + answer
         if budget_blocked:
