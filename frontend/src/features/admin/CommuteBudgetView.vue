@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '@/api/services/admin'
-import { mockCoverage } from '@/api/mock/admin'
 import { useLazyData } from '@/composables/useLazyData'
+import { emptyCoverage } from './adminData'
 import AdminKpi from './AdminKpi.vue'
 import { useToast } from '@/composables/useToast'
 
 const { toast } = useToast()
 const { data: coverage, loading, error, reload } = useLazyData(
   () => adminApi.coverage(),
-  mockCoverage,
+  emptyCoverage,
 )
 const stats = computed(() => coverage.value.stats)
 const communities = computed(() => coverage.value.communities)
 const priority = computed(() => coverage.value.priority)
 const busy = ref(false)
+const origin = ref('')
 const geoBusy = ref(false)
 const count = ref(10)
 const buckets = ref(['07:30', '08:00', '08:30', '09:00'])
@@ -29,6 +30,15 @@ const over = computed(() => !buckets.value.length || !modes.value.includes('公�
 const multiBucket = computed(() => stats.value.commute_multi_bucket ?? 0)
 
 const noGeo = computed(() => stats.value.communities - stats.value.geocoded)
+
+onMounted(async () => {
+  try {
+    const destination = await adminApi.commuteDestination()
+    origin.value = destination?.address || ''
+  } catch {
+    origin.value = ''
+  }
+})
 
 function toggleBucket(value: string) {
   buckets.value = buckets.value.includes(value)
@@ -47,7 +57,7 @@ async function startSampling() {
   busy.value = true
   try {
     const job = await adminApi.startSampling({
-      origin: '深圳会展中心',
+      origin: origin.value || '公司地址',
       count: Number(count.value) || 0,
       buckets: [...buckets.value],
       modes: [...modes.value],

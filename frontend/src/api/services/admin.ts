@@ -3,6 +3,7 @@ import { request } from '../http'
 import { mockAdminService } from '../mock/admin'
 import type {
   AdminOverview,
+  CommuteDestination,
   AdminService,
   AdminSettings,
   AuditLogEntry,
@@ -122,6 +123,8 @@ const httpAdminService: AdminService = {
       body: JSON.stringify({ mode: 'rules' }),
     }),
   agentCost: (days = 7) => request<AgentCostData>(`/admin/agent/cost?days=${days}`),
+  commuteDestination: () =>
+    request<CommuteDestination | null>('/admin/commute/destination'),
   opsStatus: () => request<OpsStatus>('/admin/ops/status'),
   runOpsCheck: (force = false) =>
     request<Record<string, unknown>>(`/admin/ops/check?force=${force ? 'true' : 'false'}`, {

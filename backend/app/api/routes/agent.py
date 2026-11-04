@@ -10,12 +10,18 @@ from app.core.db import SessionLocal, get_db
 from app.models import Listing, ListingStatus, User
 from app.schemas.agent import AgentRequest, ChatSessionOut, MonitorCreate, SavedMonitorOut
 from app.services import agent_service, auth_service
+from app.services.settings_service import get_commute_destination
 
 router = APIRouter(
     prefix="/api/agent",
     tags=["agent"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@router.get("/settings")
+async def agent_settings(db: AsyncSession = Depends(get_db)) -> dict:
+    return {"commute_destination": await get_commute_destination(db)}
 
 
 @router.post("/messages/stream")

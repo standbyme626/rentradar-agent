@@ -13,6 +13,11 @@ const httpAgentService: AgentService = {
   async *stream(requestBody: AgentRequest) {
     yield* streamSse<AgentEvent>('/agent/messages/stream', requestBody)
   },
+  async settings() {
+    return request<{
+      commute_destination: import('../contracts').CommuteDestination | null
+    }>('/agent/settings')
+  },
   async stats() {
     return request<{ listings: number; active: number; scored: number }>('/agent/stats')
   },

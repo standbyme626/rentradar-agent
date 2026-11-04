@@ -4,11 +4,10 @@ import { RouterLink } from 'vue-router'
 import { CheckCircle2, Bot, Image, Route } from 'lucide-vue-next'
 import AdminKpi from './AdminKpi.vue'
 import { adminApi } from '@/api/services/admin'
-import { mockOverview } from '@/api/mock/admin'
 import { useLazyData } from '@/composables/useLazyData'
-import { formatTime } from './adminData'
+import { emptyOverview, formatTime } from './adminData'
 
-const { data: overview, loading, error, reload } = useLazyData(() => adminApi.overview(), mockOverview)
+const { data: overview, loading, error, reload } = useLazyData(() => adminApi.overview(), emptyOverview)
 const stats = computed(() => overview.value.stats)
 const runs = computed(() => overview.value.runs)
 const funnel = computed(() => overview.value.funnel)
