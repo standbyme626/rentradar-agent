@@ -89,29 +89,11 @@ function statusClass(status: PlanStatus) {
               <div class="flex items-center gap-2 text-[12px] font-semibold text-forest">
                 <Sparkles :size="14" />
                 AI 视觉分析
-                <span class="tag-amber">演示</span>
-              </div>
-              <div class="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-                <div class="rounded-lg border border-line bg-paper px-2.5 py-2">
-                  <div class="text-[9.5px] text-muted">实拍概率</div>
-                  <div class="text-[13px] font-semibold text-ink">82%</div>
-                </div>
-                <div class="rounded-lg border border-line bg-paper px-2.5 py-2">
-                  <div class="text-[9.5px] text-muted">装修</div>
-                  <div class="text-[13px] font-semibold text-ink">精装</div>
-                </div>
-                <div class="rounded-lg border border-line bg-paper px-2.5 py-2">
-                  <div class="text-[9.5px] text-muted">朝向 / 采光</div>
-                  <div class="text-[13px] font-semibold text-ink">南向 · 良好</div>
-                </div>
-                <div class="rounded-lg border border-line bg-paper px-2.5 py-2">
-                  <div class="text-[9.5px] text-muted">可见问题</div>
-                  <div class="text-[13px] font-semibold text-amber">1 处水渍</div>
-                </div>
+                <span class="tag-neutral">可选</span>
               </div>
               <p class="mt-2 text-[10.5px] leading-5 text-muted">{{ message.text }}</p>
               <p class="mt-1 text-[10px] leading-5 text-faint">
-                示例图片分析卡片；实际封面分析/视觉标签在房源详情抽屉中展示，以真实证据为准。
+                封面分析/视觉标签在房源详情抽屉和「图片 / AI」页展示；视觉模型未开启时不生成结论，不展示演示值。
               </p>
             </div>
           </div>

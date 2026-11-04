@@ -22,11 +22,9 @@ const buckets = ref(['07:30', '08:00', '08:30', '09:00'])
 const modes = ref(['公交/地铁'])
 
 const bucketOptions = ['07:30', '08:00', '08:30', '09:00']
-const modeOptions = ['公交/地铁', '驾车', '步行接驳', '骑行接驳']
 
-const calls = computed(() => (Number(count.value) || 0) * buckets.value.length * modes.value.length)
-const unsupportedModes = computed(() => modes.value.filter((item) => item !== '公交/地铁'))
-const over = computed(() => !buckets.value.length || !modes.value.includes('公交/地铁'))
+const calls = computed(() => (Number(count.value) || 0) * buckets.value.length)
+const over = computed(() => !buckets.value.length)
 const multiBucket = computed(() => stats.value.commute_multi_bucket ?? 0)
 
 const noGeo = computed(() => stats.value.communities - stats.value.geocoded)
@@ -44,12 +42,6 @@ function toggleBucket(value: string) {
   buckets.value = buckets.value.includes(value)
     ? buckets.value.filter((item) => item !== value)
     : [...buckets.value, value]
-}
-
-function toggleMode(value: string) {
-  modes.value = modes.value.includes(value)
-    ? modes.value.filter((item) => item !== value)
-    : [...modes.value, value]
 }
 
 async function startSampling() {
@@ -124,24 +116,6 @@ async function generateGeocodePlan() {
               </button>
             </div>
           </div>
-          <div>
-            <label class="label">方式</label>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="option in modeOptions"
-                :key="option"
-                class="rounded-full border px-3 py-1.5 text-[11px] transition"
-                :class="
-                  modes.includes(option)
-                    ? 'border-forest bg-forest-soft font-semibold text-forest'
-                    : 'border-line2 bg-paper text-muted'
-                "
-                @click="toggleMode(option)"
-              >
-                {{ option }}
-              </button>
-            </div>
-          </div>
         </div>
 
         <div class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-3">
@@ -161,14 +135,11 @@ async function generateGeocodePlan() {
           class="mt-3 rounded-xl border px-3.5 py-2.5 text-[10.5px] leading-5"
           :class="over ? 'border-coral/30 bg-coral-soft text-coral' : 'border-amber/25 bg-amber-soft text-amber'"
         >
-          <template v-if="over">至少选择一个时段和「公交/地铁」；其他方式暂未接入。</template>
+          <template v-if="over">至少选择一个时段。</template>
           <template v-else>
             按 {{ count }} 个小区 × {{ buckets.length }} 时段 = {{ calls }} 次地铁查询（零额度）。SZMC 无出发时间参数，结果不会随时段变化。
           </template>
         </div>
-        <p v-if="unsupportedModes.length" class="mt-1 text-[10px] text-coral">
-          未接入的方式已忽略：{{ unsupportedModes.join(' / ') }}。
-        </p>
 
         <div class="mt-3 flex flex-wrap gap-2">
           <button class="btn-primary" :disabled="over || !calls || busy" @click="startSampling">

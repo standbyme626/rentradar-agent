@@ -11,19 +11,12 @@ const filteredRuns = computed(() =>
   status.value === 'all' ? runs.value : runs.value.filter((run) => run.status === status.value),
 )
 
-const events = [
-  ['✓', '采集恢复：贝壳 App API', '10-30 21:18', '任务 1 切 transport=api；30 页慢扫 900 条，按 house_code 去重。', 'green'],
-  ['✓', 'Provider 管理上线', '10-31 01:10', '接入贝壳 API/CDP、高德、天地图、滴滴 MCP；/admin/providers 可用。', 'green'],
-  ['✓', '管理端切真实数据', '10-31 01:40', '/api/admin/* BFF 上线；总览、候选、质量、任务、设置读取真实库。', 'green'],
-  ['✓', 'Agent 规则版上线', '10-31 02:15', 'SSE + sessions/monitors + 管理端 Trace 已上线；LLM/详情/AI 仍待接入。', 'green'],
-  ['!', '通勤多时段未接入', '—', '当前 286 条单次采样；p50/p90 待 Top 10 候选。', 'coral'],
-]
 </script>
 
 <template>
   <div>
     <h2 class="text-[20px] font-bold tracking-tight">运行日志</h2>
-    <p class="mt-1 text-[12.5px] text-muted">最近 10 次运行与关键事件；验证码、富化中断、重评分都在这里。</p>
+    <p class="mt-1 text-[12.5px] text-muted">最近运行记录；验证码、富化中断、重评分都在这里。</p>
 
     <section class="card mt-4 p-4">
       <h3 class="panel-title">运行记录 <span class="hint">最近 {{ runs.length }} 次 · {{ loading ? '加载中' : '已同步' }}</span></h3>
@@ -67,31 +60,5 @@ const events = [
       </div>
     </section>
 
-    <section class="card mt-4 p-4">
-      <h3 class="panel-title">关键事件</h3>
-      <div class="mt-3 space-y-4">
-        <div v-for="(event, index) in events" :key="index" class="flex gap-3">
-          <span
-            class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold"
-            :class="
-              event[4] === 'coral'
-                ? 'bg-coral-soft text-coral'
-                : event[4] === 'green'
-                  ? 'bg-forest text-white'
-                  : 'bg-sand text-muted'
-            "
-          >
-            {{ event[0] }}
-          </span>
-          <div>
-            <div class="flex flex-wrap items-center gap-2">
-              <b class="text-[12px] text-ink">{{ event[1] }}</b>
-              <span class="mono text-[9.5px] text-faint">{{ event[2] }}</span>
-            </div>
-            <p class="mt-0.5 text-[10.5px] leading-5 text-muted">{{ event[3] }}</p>
-          </div>
-        </div>
-      </div>
-    </section>
   </div>
 </template>

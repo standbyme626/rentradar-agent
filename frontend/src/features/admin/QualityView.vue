@@ -91,7 +91,7 @@ async function enqueueGeocode(item: Community) {
       </section>
 
       <section class="card p-4">
-        <h3 class="panel-title">POI 封顶 <span class="hint">高德 around 返回上限</span></h3>
+        <h3 class="panel-title">POI 封顶 <span class="hint">POI 返回上限</span></h3>
         <div class="mt-2 rounded-xl border border-amber/25 bg-amber-soft px-3.5 py-2.5 text-[10.5px] leading-5 text-amber">
           {{ stats.poi_capped }} 个小区的餐饮 count 达到 600 上限，当前便利分只能区分“密集 / 不密集”，无法区分 600 与 1200。后续改按品类细分统计或换网格口径。
         </div>

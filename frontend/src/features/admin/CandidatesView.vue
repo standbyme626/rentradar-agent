@@ -42,7 +42,6 @@ const allChecked = computed(
 const missingCommute = computed(
   () => [...selected.value].filter((id) => !items.value.find((item) => item.id === id)?.has_commute).length,
 )
-const estCalls = computed(() => selected.value.size + missingCommute.value)
 
 function toggle(id: number, checked: boolean) {
   const next = new Set(selected.value)
@@ -70,7 +69,22 @@ async function runSelected() {
   busy.value = true
   try {
     const job = await adminApi.enqueueAnalysis([...selected.value])
-    toast(`已提交任务 ${job.id}：${job.calls} 套候选 · 本地重评分（外部调用后续接入）`)
+    toast(`已提交任务 ${job.id}：${job.calls} 套候选 · 仅本地重评分`)
+    selected.value = new Set()
+  } catch {
+    toast('提交失败，请稍后重试')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function analyzeActive() {
+  if (!active.value || busy.value) return
+  busy.value = true
+  try {
+    const job = await adminApi.enqueueAnalysis([active.value.id])
+    toast(`已提交本地重评分 ${job.id}`)
+    active.value = null
   } catch {
     toast('提交失败，请稍后重试')
   } finally {
@@ -224,7 +238,7 @@ function exportCandidates() {
         <CheckSquare :size="15" class="text-[#a9bdb1]" />
         <span class="text-[13px] font-semibold">已选 {{ selected.size }} 套</span>
         <span class="text-[10.5px] text-[#a9bdb1]">
-          预计 {{ estCalls }}–{{ selected.size * 3 }} 次调用 · 高德 {{ missingCommute }} 次 · 详情 {{ selected.size }} 套 · AI {{ selected.size }} 次
+          本地重评分 {{ selected.size }} 套（不发外部请求）· 缺通勤 {{ missingCommute }} 套需另采样
         </span>
       </template>
       <template v-else>
@@ -254,8 +268,7 @@ function exportCandidates() {
           <span :class="active.has_geo ? 'tag-green' : 'tag-coral'">坐标</span>
           <span :class="active.dining_count != null ? 'tag-green' : 'tag-coral'">POI</span>
           <span :class="active.has_commute ? 'tag-green' : 'tag-coral'">通勤 {{ active.samples }} 次</span>
-          <span class="tag-coral">详情图 0</span>
-          <span class="tag-coral">AI 0</span>
+          <span class="tag-neutral">封面分析见图片页</span>
         </div>
         <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">评分理由</h4>
         <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11.5px] leading-6 text-muted">
@@ -267,7 +280,7 @@ function exportCandidates() {
         </div>
         <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">按需分析成本</h4>
         <div class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11.5px] leading-6 text-muted">
-          {{ active.has_commute ? '通勤已有缓存，复用 0 次' : '通勤缺样本，需 1 次高德' }}；详情抓取 1 套（3–6 图）；AI 1 次（魔搭免费）。
+          本地重评分 1 套；通勤{{ active.has_commute ? '已有缓存' : '缺样本，需采样' }}；详情多图不可用，封面分析见图片页。
         </div>
         <h4 class="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">原始链接</h4>
         <div class="mono mt-2 break-all rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[10px] text-faint">
@@ -276,8 +289,10 @@ function exportCandidates() {
       </template>
       <template #footer>
         <button class="btn flex-1" @click="active = null">关闭</button>
-        <button class="btn-primary flex-1" @click="toast('已加入候选池（演示）')">加入候选</button>
-        <button class="btn-primary flex-1" @click="toast('已触发按需分析（演示）')">按需分析</button>
+        <a v-if="active?.url" class="btn flex-1" :href="active.url" target="_blank" rel="noopener">打开原文</a>
+        <button class="btn-primary flex-1" :disabled="busy" @click="analyzeActive">
+          {{ busy ? '提交中…' : '本地重评分' }}
+        </button>
       </template>
     </AppDrawer>
   </div>
