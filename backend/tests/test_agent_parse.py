@@ -59,3 +59,20 @@ def test_default_company_is_not_treated_as_an_explicit_change():
     conditions = parse_conditions("预算 4000，5 号线，通勤 40 分钟")
     assert conditions["company"] == "深圳会展中心"
     assert conditions["company_explicit"] is False
+
+
+def test_company_location_does_not_become_residential_district():
+    conditions = parse_conditions("公司换到南山科技园，预算 4000，5 号线，通勤 40 分钟")
+    assert conditions["company"] == "南山科技园"
+    assert conditions["district"] is None
+
+
+def test_company_and_explicit_residential_district_are_separate():
+    conditions = parse_conditions("公司在南山科技园，想住龙岗，预算 4000")
+    assert conditions["company"] == "南山科技园"
+    assert conditions["district"] == "龙岗区"
+
+
+def test_long_commute_marks_long_search():
+    conditions = parse_conditions("预算 4500，5 号线，接受 60 分钟通勤")
+    assert conditions["isLong"] is True

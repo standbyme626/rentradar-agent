@@ -88,6 +88,7 @@ async def parse_intent(
         '"盐田区"/"光明区"/"坪山区"/"大鹏新区"或null)、'
         'must(数组，元素只能是"电梯","近地铁","精装","南向")、'
         'company(用户明确说出的公司/上班地点，2-64字的地址或地标；没说就null)。'
+        "公司地点不等于居住区域，不要从 company 推断 district。"
         "只提取用户明确说出的条件；已有条件作为默认值，新消息可以覆盖。"
     )
     user = f"已有条件：{json.dumps(base, ensure_ascii=False)}\n新消息：{message}"
