@@ -166,6 +166,25 @@ def _extract_company(text: str) -> str | None:
     return match[0] if match else None
 
 
+CLEAR_PATTERNS = {
+    "budget": r"(?:预算\s*(?:不限|不设|无所谓|不限制|随便)|不设预算|预算不设)",
+    "commute": (
+        r"(?:通勤\s*(?:不限|不设|无所谓|不限制|不考虑|不用)"
+        r"|(?:不看|不考虑|不用看|取消|去掉)\s*通勤)"
+    ),
+    "layout": r"(?:户型\s*(?:不限|不设|无所谓|不限制)|户型不限)",
+    "district": r"(?:区域|地段)\s*(?:不限|不设|无所谓|不限制)|不限(?:区域|地段)",
+}
+CLEAR_MUST_PATTERN = r"(?:不要|去掉|不需要|取消)\s*(电梯|近地铁|精装|南向)"
+
+
+def _cleared_fields(text: str) -> set[str]:
+    fields = {key for key, pattern in CLEAR_PATTERNS.items() if re.search(pattern, text)}
+    for match in re.finditer(CLEAR_MUST_PATTERN, text):
+        fields.add(f"must:{match.group(1)}")
+    return fields
+
+
 def _extract_must(text: str) -> list[str]:
     must = []
     for tag in ("电梯", "近地铁", "精装"):
@@ -215,7 +234,15 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
     elif "会展中心" in message:
         conditions["company"] = "深圳会展中心"
         conditions["company_explicit"] = True
-    conditions["must"] = sorted(set(conditions["must"]) | set(_extract_must(message)))
+    cleared = _cleared_fields(message)
+    for key in ("budget", "commute", "layout", "district"):
+        if key in cleared:
+            conditions[key] = None
+    must = set(conditions["must"]) | set(_extract_must(message))
+    for item in cleared:
+        if item.startswith("must:"):
+            must.discard(item.split(":", 1)[1])
+    conditions["must"] = sorted(must)
     conditions["isLong"] = (
         conditions["district"] == "龙岗区"
         or bool(conditions.get("budget") and conditions["budget"] <= 3000)
@@ -343,9 +370,10 @@ def _merge_llm_conditions(
         return rule
     merged = dict(rule)
     company_match = _extract_company_match(message) if message is not None else None
+    cleared = _cleared_fields(message) if message is not None else set()
     for key in ("budget", "commute", "layout", "district", "company"):
         value = intent.get(key)
-        if value is None:
+        if value is None or key in cleared:
             continue
         if key == "company":
             explicit = bool(company_match) or (
@@ -369,7 +397,11 @@ def _merge_llm_conditions(
                 continue
         merged[key] = value
     if intent.get("must"):
-        merged["must"] = sorted(set(merged.get("must") or []) | set(intent["must"]))
+        must = set(merged.get("must") or []) | set(intent["must"])
+        for item in cleared:
+            if item.startswith("must:"):
+                must.discard(item.split(":", 1)[1])
+        merged["must"] = sorted(must)
     merged["isLong"] = (
         merged.get("district") == "龙岗区"
         or bool(merged.get("budget") and merged.get("budget") <= 3000)
@@ -762,7 +794,7 @@ async def stream(
             )
             await db.commit()
             yield {"type": "toast", "message": f"已保存监控：{name}"}
-            quick_text = "已保存为监控条件。新匹配/降价推送在后续接入。"
+            quick_text = "已保存为监控条件。新匹配/降价会按监控设置推送（需在设置中开启飞书通知）。"
             plan = _build_plan(
                 conditions_summary(base),
                 guard_record["summary"],

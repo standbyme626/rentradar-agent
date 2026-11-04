@@ -85,3 +85,12 @@ def test_dependent_tool_args_need_concrete_ids():
     assert _has_concrete_tool_args({"listing_ids": [1, 2]}) is True
     assert _has_concrete_tool_args({"listing_id": "$top"}) is False
     assert _has_concrete_tool_args({"listing_ids": []}) is False
+
+
+def test_condition_reset_words():
+    base = parse_conditions("预算 4000，5 号线，通勤 50 分钟，想要两居，电梯")
+    cleared = parse_conditions("预算不限，先不看通勤，户型不限，不要电梯", base)
+    assert cleared["budget"] is None
+    assert cleared["commute"] is None
+    assert cleared["layout"] is None
+    assert "电梯" not in cleared["must"]
