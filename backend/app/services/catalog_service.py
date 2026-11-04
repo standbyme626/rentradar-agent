@@ -12,11 +12,10 @@ from app.models import City, Community, Listing, ListingStatus, Source, Task
 
 SUPPORTED_HOUSING_SOURCES = {
     "beike": "贝壳 App 列表 API",
+    "ziroom": "自如公开列表 API",
     "manual": "手动导入（品牌公寓/线下房源）",
 }
-RESERVED_HOUSING_SOURCES = {
-    "ziroom": "自如（预留，未接入）",
-}
+RESERVED_HOUSING_SOURCES: dict[str, str] = {}
 
 
 def _city_dict(city: City, *, listings: int, communities: int, tasks: int) -> dict:

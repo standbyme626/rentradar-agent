@@ -141,10 +141,10 @@ cd backend
 
 | 平台 | 接口 | 说明 | 状态 |
 |---|---|---|---|
-| **自如** | `GET https://m.ziroom.com/v7/room/list.json?city_code=440300&page=1&...` | 深圳 `city_code=440300`；返回 `data.rooms[]`（id/house_id/name/area/floor/photo 等） | 已验证 |
+| **自如** | `GET https://m.ziroom.com/v7/room/list.json?city_code=440300&page=1&...` | 深圳 `city_code=440300`；返回 `data.rooms[]`（id/house_id/name/area/floor/photo 等） | 已接入 `backend/app/sources/ziroom.py`（2026-11-04） |
 | 自如详情 | `GET https://m.ziroom.com/wap/detail/room.json?city_code=440300&id={id}` | 需带 referer/accept 版本；实测部分 id 返回「已下架」 | 待验证 |
 
-自如有几个特点：价格字段是图片（`price` 是 PNG 数组），需要 OCR 或从详情接口取数字；列表有分页，建议低频。
+自如价格字段是 PNG 精灵图 + 数字索引数组；`ziroom.py` 从精灵图字形 dHash 模板解出数字顺序，再按索引还原月租（未知精灵图会跳过该条，不会猜价）。列表有分页，建议低频；`ziroom` source 默认停用，需在 `/admin/ops` 启用。
 
 #### 接口存活、但需要城市 ID / 参数
 

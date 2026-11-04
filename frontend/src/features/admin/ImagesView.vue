@@ -61,6 +61,15 @@ function coverSrc(item: { listing_id: number; image_url: string | null; image: {
   return item.image_url || ''
 }
 
+function visionTags(analysis: { quality?: Record<string, unknown> } | null | undefined) {
+  const vision = analysis?.quality?.vision
+  if (!vision || typeof vision !== 'object') return []
+  const tags = (vision as { tags?: unknown }).tags
+  return Array.isArray(tags)
+    ? (tags as Array<{ tag: string; confidence: number }>).slice(0, 4)
+    : []
+}
+
 function confidence(value: number | null | undefined) {
   return value == null ? '—' : `${Math.round(value * 100)}%`
 }
@@ -69,7 +78,7 @@ function confidence(value: number | null | undefined) {
 <template>
   <div>
     <h2 class="text-[20px] font-bold tracking-tight">图片 / AI</h2>
-    <p class="mt-1 text-[12.5px] text-muted">只对候选房源下载列表封面，本地计算 dHash 与确定性信号；视觉大模型未授权，不伪造标签。</p>
+    <p class="mt-1 text-[12.5px] text-muted">只对候选房源下载列表封面，本地计算 dHash 与确定性信号；视觉标签由已接入的 OpenCode Go 模型按需生成，未启用时不调用、不伪造。</p>
 
     <div v-if="loading" class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2 text-[10.5px] text-muted">图片队列加载中…</div>
     <div v-else-if="loadError" class="mt-3 rounded-xl border border-coral/25 bg-coral-soft px-3.5 py-2 text-[10.5px] text-coral">
@@ -83,7 +92,7 @@ function confidence(value: number | null | undefined) {
       <AdminKpi label="已分析" :value="stats?.analyzed ?? 0" :sub="`待处理 ${stats?.pending ?? 0}`" />
       <AdminKpi label="可疑 ≥2 信号" :value="stats?.suspicious ?? 0" sub="不单独定罪" tone="coral" />
       <AdminKpi label="观察" :value="stats?.watch ?? 0" sub="单信号" tone="amber" />
-      <AdminKpi label="视觉标签" :value="stats?.vision_pending ?? 0" :sub="stats?.vision_enabled ? '已授权' : '未授权 · 待人工'" tone="amber" />
+      <AdminKpi label="视觉标签" :value="stats?.vision_pending ?? 0" :sub="stats?.vision_enabled ? 'OpenCode Go 已启用' : '未启用 · 待人工'" tone="amber" />
     </div>
 
     <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -151,6 +160,15 @@ function confidence(value: number | null | undefined) {
                     </span>
                   </div>
                   <span v-else class="text-[9.5px] text-faint">—</span>
+                  <div v-if="visionTags(item.analysis).length" class="mt-1 flex max-w-[240px] flex-wrap gap-1">
+                    <span
+                      v-for="tag in visionTags(item.analysis)"
+                      :key="tag.tag"
+                      class="rounded border border-forest/20 bg-forest-soft px-1.5 py-0.5 text-[9px] text-forest"
+                    >
+                      {{ tag.tag }} · {{ Math.round(tag.confidence * 100) }}%
+                    </span>
+                  </div>
                 </td>
                 <td class="mono px-2 py-2.5">{{ confidence(item.analysis?.confidence) }}</td>
               </tr>
@@ -206,8 +224,8 @@ function confidence(value: number | null | undefined) {
         </div>
         <div class="rounded-xl border border-line bg-paper2 px-3.5 py-3">
           <div class="text-[10px] text-muted">4 · 视觉标签</div>
-          <div class="mt-0.5 text-[12px] font-semibold">未授权 · 不调用</div>
-          <p class="mt-1 text-[9.5px] leading-4 text-faint">需要 Qwen-VL/本地 VL 的明确授权；此前只记录“待视觉”。</p>
+          <div class="mt-0.5 text-[12px] font-semibold">{{ stats?.vision_enabled ? 'OpenCode Go · 按需调用' : '未启用 · 不调用' }}</div>
+          <p class="mt-1 text-[9.5px] leading-4 text-faint">`APP_IMAGE_VISION_ENABLED=true` 时由已接入模型生成标签与置信度；失败只记“待视觉”，不影响本地信号。</p>
         </div>
       </div>
     </section>

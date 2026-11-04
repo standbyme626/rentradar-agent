@@ -225,13 +225,14 @@ curl -sN -X POST http://192.168.31.197:8010/api/agent/messages/stream \
 
 ## 2026-11-04 · P2/P3 补记（CI / 告警 / 分享 / 多城市多源 / 参考租金 / OpenCode Go）
 
-- **迁移**：head `c3d4e5f6a7b8`（`share_links`、`reference_rents`、manual/ziroom source、sz/sh city 兜底、listings 去重索引）。
+- **迁移**：head `d4e5f6a7b8c9`（`share_links`、`reference_rents`、manual/ziroom source、sz/sh city 兜底、listings 去重索引）。
 - **模型**：新 Provider `opencode_go_deepseek`（OpenCode Go · DeepSeek V4.1 Flash，priority 5）。`.env` 需 `OPENCODE_GO_API_KEY`；`OPENCODE_GO_MODEL` 默认 `deepseek-v4.1-flash`。网关必须带真实 UA + `x-opencode-session`。ModelScope 保留为兜底；`aiDailyCap` 对所有 AI Provider 生效。
 - **Agent 原生工具**：`APP_AGENT_NATIVE_TOOLS=false` 默认关闭；开启先走 tool_calls，失败回退严格 JSON/规则。真实 spike 已通过。
 - **运维页** `/admin/ops`：队列/失败/磁盘/备份/Provider 告警、只读分享 token、来源/城市开关、参考租金导入。告警由 scheduler 每 10 分钟入队 `alert_check`，飞书推送有冷却与恢复通知。
 - **备份**：`backup.sh` 写 `last_backup.json`（ok/failed）；`restore-drill.sh` 恢复临时库并输出计数。agent 环境没有 Docker/psql，未实际执行。
 - **分享**：`/share/<token>`；token 只存 SHA-256，可撤销/过期；公开 API 限流 + noindex；只发聚合。公网前按 `docs/OPS.md` 加 TLS/反代/限流。
-- **多源**：`manual` JSON/CSV 源默认停用；跨源同房源按小区/户型/租金/面积去重。`ziroom` 仅预留。
+- **多源**：`manual` JSON/CSV 源默认停用；`ziroom` 公开列表 API 已接入（默认停用）；跨源同房源按小区/户型/租金/面积去重。
 - **参考租金**：`reference_rents` + `import-reference-rents`；评分价格项优先参考价。无住建局 API，人工导入。
+- **视觉标签**：`APP_IMAGE_VISION_ENABLED=true` 时调用 OpenCode Go 视觉模型，标签写入 `quality.vision`，失败只标“待视觉”；默认关闭。
 - **CI**：`.github/workflows/ci.yml`；本地等价：`ruff check app tests`、`pytest -q`、`npm run build`、`alembic upgrade head`。
-- **验证**：142 passed；ruff/前端构建通过；迁移离线 SQL 通过。生产迁移、备份恢复、覆盖率/通勤/价格点、外卖样本、天地图 Key、视觉标签仍未验证。
+- **验证**：154 passed；ruff/前端构建通过；迁移离线 SQL 通过。生产迁移、备份恢复、覆盖率/通勤/价格点、外卖样本、天地图 Key、视觉标签的**批量**运行仍未验证（单张封面真实调用已通过）。

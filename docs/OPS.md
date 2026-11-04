@@ -1,6 +1,6 @@
 # 运维手册（CI / 告警 / 备份 / 只读分享）
 
-版本：2026-11-04 · 对应迁移 head `c3d4e5f6a7b8`
+版本：2026-11-04 · 对应迁移 head `d4e5f6a7b8c9`
 
 ## 1. CI
 
@@ -70,6 +70,6 @@ rentradar.example.com {
 ## 5. 回滚
 
 1. 停 scheduler/worker（operator）。
-2. `alembic downgrade -1`（P2 迁移 `c3d4e5f6a7b8` 可逆）。
+2. `alembic downgrade -1`（P2 迁移 `d4e5f6a7b8c9` 可逆）。
 3. 恢复上一份 dump：`pg_restore` 到新库后切换 `APP_DATABASE_URL`，不要覆盖正在使用的库。
 4. 重启三个 systemd 单元，`curl /health` 确认。

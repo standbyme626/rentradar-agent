@@ -243,7 +243,7 @@ export interface ImageAnalysis {
   verdict: 'clear' | 'watch' | 'suspicious' | 'unknown'
   confidence: number | null
   signals: ImageAnalysisSignal[]
-  quality: Record<string, number | boolean | null>
+  quality: Record<string, unknown>
   needs_vision: boolean
   analyzed_at: string | null
 }

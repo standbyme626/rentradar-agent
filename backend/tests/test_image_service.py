@@ -126,3 +126,29 @@ def test_cover_url_only_allows_beike_cdn():
     blocked = SimpleNamespace(image_url="http://127.0.0.1:8010/api/admin/overview")
     assert image_service._cover_url(allowed) == allowed.image_url
     assert image_service._cover_url(blocked) is None
+
+
+def test_vision_data_url_and_signal_mapping():
+    from PIL import Image
+
+    from app.services.image_service import _vision_data_url, _vision_signals
+
+    image = Image.new("RGB", (1200, 900), (120, 140, 160))
+    data_url = _vision_data_url(image)
+    assert data_url.startswith("data:image/jpeg;base64,")
+
+    signals = _vision_signals(
+        {
+            "model": "deepseek-v4.1-flash",
+            "summary": "疑似样板间",
+            "tags": [
+                {"tag": "样板间", "confidence": 0.7},
+                {"tag": "图文不符", "confidence": 0.8},
+                {"tag": "实拍", "confidence": 0.9},
+                {"tag": "not-allowed", "confidence": 1.0},
+            ],
+        }
+    )
+    codes = {item["code"] for item in signals}
+    assert codes == {"vision_staged", "vision_mismatch"}
+    assert all(item["evidence"]["model"] == "deepseek-v4.1-flash" for item in signals)

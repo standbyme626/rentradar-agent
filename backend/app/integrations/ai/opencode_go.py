@@ -51,7 +51,7 @@ class OpenCodeGoProvider(BaseProvider):
         code="opencode_go_deepseek",
         name="OpenCode Go · DeepSeek V4.1 Flash",
         domain=ProviderDomain.ai,
-        capabilities=frozenset({Capability.chat}),
+        capabilities=frozenset({Capability.chat, Capability.image_tagging}),
         auth="api_key",
         coord_system="无",
         description=(
@@ -169,6 +169,88 @@ class OpenCodeGoProvider(BaseProvider):
             "finish_reason": choices[0].get("finish_reason"),
             "raw": data,
         }
+
+    async def tag_image(
+        self,
+        image_url: str,
+        *,
+        prompt: str | None = None,
+        model: str | None = None,
+    ) -> dict:
+        """Ask the approved model for strict-JSON cover-image tags.
+
+        The caller passes a data URL (downscaled JPEG) so only the cover image
+        is sent, never listing text/addresses.
+        """
+        system = prompt or (
+            "你是租房房源封面审核器。只输出 JSON 对象，不要 markdown："
+            '{"scene":"实拍|样板间|不确定",'
+            '"tags":[{"tag":"实拍|样板间|精装修|采光好|采光差|水渍|霉斑|图文不符",'
+            '"confidence":0.0}],"summary":"一句话"}。'
+            "只根据图片可见内容判断；不确定就不要编造。"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "请分析这张租房封面。"},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            },
+        ]
+        result = await self.chat(
+            messages, max_tokens=500, temperature=0, model=model
+        )
+        text = result.get("content") or result.get("reasoning_content") or ""
+        data = self._extract_json(text)
+        if data is None:
+            raise ProviderUnavailable("OpenCode Go 视觉标签返回无法解析")
+        tags: list[dict] = []
+        for item in data.get("tags") or []:
+            if not isinstance(item, dict):
+                continue
+            tag = str(item.get("tag") or "").strip()
+            try:
+                confidence = float(item.get("confidence"))
+            except (TypeError, ValueError):
+                confidence = 0.5
+            if tag:
+                tags.append(
+                    {
+                        "tag": tag[:32],
+                        "confidence": round(min(1.0, max(0.0, confidence)), 2),
+                    }
+                )
+        return {
+            "scene": str(data.get("scene") or "")[:32],
+            "tags": tags[:12],
+            "summary": str(data.get("summary") or "")[:200],
+            "model": result.get("model") or "",
+            "prompt_tokens": result.get("prompt_tokens") or 0,
+            "completion_tokens": result.get("completion_tokens") or 0,
+        }
+
+    @staticmethod
+    def _extract_json(text: str) -> dict | None:
+        import re
+
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+        try:
+            value = json.loads(cleaned)
+            return value if isinstance(value, dict) else None
+        except ValueError:
+            match = re.search(r"\{.*\}", cleaned, re.S)
+            if not match:
+                return None
+            try:
+                value = json.loads(match.group(0))
+                return value if isinstance(value, dict) else None
+            except ValueError:
+                return None
 
     async def test(self) -> ProviderTestResult:
         started = time.monotonic()

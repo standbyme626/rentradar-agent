@@ -25,9 +25,10 @@ from app.services.notify_service import notify_events, send_text
 from app.services.score_service import score_listing
 from app.services.settings_service import get_admin_settings
 from app.sources import beike_api, manual
-from app.sources.base import CaptchaRequiredError
+from app.sources.base import CaptchaRequiredError, EmptyPageError
 from app.sources.beike import build_list_url, parse_list
 from app.sources.cdp import CDPPageFetcher
+from app.sources.ziroom import ZiroomFetcher
 
 log = get_logger("crawl")
 
@@ -239,7 +240,7 @@ async def run_task(
     source = await db.get(Source, task.source_id)
     if city is None or source is None:
         raise ValueError("task city or source missing")
-    if source.code not in {"beike", "manual"}:
+    if source.code not in {"beike", "ziroom", "manual"}:
         raise ValueError(f"source {source.code} is not implemented yet")
     if not source.enabled:
         raise ValueError(f"source {source.code} is disabled")
@@ -348,6 +349,62 @@ async def run_task(
                 run.stats = stats
             await db.commit()
             raise
+    if source.code == "ziroom":
+        try:
+            fetcher = ZiroomFetcher(city.code)
+            try:
+                stats["transport"] = "ziroom"
+                stats["scope"] = "ziroom:all"
+                for page in range(1, max(1, pages) + 1):
+                    try:
+                        ziroom_drafts = await fetcher.fetch_page(page)
+                    except EmptyPageError:
+                        break
+                    stats["pages"] += 1
+                    stats["fetched"] += len(ziroom_drafts)
+                    now = datetime.now(UTC)
+                    for draft in ziroom_drafts:
+                        draft.raw["scope"] = "ziroom:all"
+                        await _ingest_draft(
+                            db,
+                            city=city,
+                            source=source,
+                            task=task,
+                            draft=draft,
+                            now=now,
+                            baseline=baseline,
+                            stats=stats,
+                            event_ids=event_ids,
+                            seen_ids=seen_ids,
+                            seen_drafts=seen_drafts,
+                        )
+                    await db.commit()
+                    log.info(
+                        "ziroom_page_done",
+                        page=page,
+                        fetched=stats["fetched"],
+                        new=stats["new"],
+                    )
+            finally:
+                await fetcher.close()
+            run = await db.get(Run, run.id)
+            run.status = "done"
+            run.finished_at = datetime.now(UTC)
+            run.stats = stats
+            await db.commit()
+            notify_result = await notify_events(db, event_ids) if notify else None
+            return {"run_id": run.id, **stats, "notify": notify_result}
+        except Exception as exc:
+            await db.rollback()
+            run = await db.get(Run, run.id)
+            if run is not None:
+                run.status = "failed"
+                run.error = str(exc)[:1000]
+                run.finished_at = datetime.now(UTC)
+                run.stats = stats
+            await db.commit()
+            raise
+
     page_size = beike_api.MAX_LIMIT
     if transport == "api":
         page_size = max(1, min(int(filters.get("page_size") or page_size), page_size))

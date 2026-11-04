@@ -309,6 +309,63 @@ async def invoke(
     raise ProviderUnavailable(f"没有可用的 {capability.value}/{operation} Provider")
 
 
+async def invoke_image_tag(db: AsyncSession, image_url: str) -> dict:
+    """Run one vision-tagging call through the AI provider chain."""
+    admin_settings = await get_admin_settings(db)
+    settings_map = await _settings_map(db)
+    last_error: Exception | None = None
+    for provider in await _ordered_providers(db, Capability.image_tagging):
+        if not hasattr(provider, "tag_image"):
+            continue
+        try:
+            limit = await preflight(
+                db,
+                provider,
+                units=1,
+                cap_key="aiDailyCap",
+                admin_settings=admin_settings,
+                settings_map=settings_map,
+            )
+        except ProviderError as exc:
+            last_error = exc
+            continue
+        started = monotonic()
+        try:
+            result = await provider.tag_image(image_url)
+        except Exception as exc:
+            latency = int((monotonic() - started) * 1000)
+            await record_call(
+                provider,
+                capability=Capability.image_tagging.value,
+                status="error",
+                latency_ms=latency,
+                units=1,
+                error=f"{type(exc).__name__}: {exc}"[:500],
+                limit=limit,
+            )
+            last_error = exc
+            continue
+        latency = int((monotonic() - started) * 1000)
+        await record_call(
+            provider,
+            capability=Capability.image_tagging.value,
+            status="ok",
+            latency_ms=latency,
+            units=1,
+            limit=limit,
+            request_id=(
+                f"tokens:{int(result.get('prompt_tokens') or 0)}/"
+                f"{int(result.get('completion_tokens') or 0)}"
+            ),
+        )
+        return result
+    if isinstance(last_error, (ProviderQuotaExceeded, ProviderDisabled, ProviderCircuitOpen)):
+        raise last_error
+    if last_error is not None:
+        raise ProviderUnavailable(str(last_error)) from last_error
+    raise ProviderUnavailable("没有可用的 image_tagging Provider")
+
+
 async def invoke_chat(
     db: AsyncSession,
     messages: list[dict],

@@ -116,6 +116,37 @@ def test_chat_maps_auth_and_rate_limit_errors(monkeypatch):
         asyncio.run(provider.chat([{"role": "user", "content": "hi"}]))
 
 
+def test_tag_image_parses_strict_json_and_sends_data_url(monkeypatch):
+    provider = _provider(monkeypatch)
+    captured: dict = {}
+    response = httpx.Response(
+        200,
+        json={
+            "model": "deepseek-v4.1-flash",
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"scene":"样板间","tags":['
+                            '{"tag":"样板间","confidence":0.7},'
+                            '{"tag":"采光好","confidence":0.8}],'
+                            '"summary":"精修图"}'
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 40},
+        },
+    )
+    _fake_client(monkeypatch, response, captured)
+    data_url = "data:image/jpeg;base64,AAAA"
+    result = asyncio.run(provider.tag_image(data_url))
+    assert result["scene"] == "样板间"
+    assert result["tags"][0] == {"tag": "样板间", "confidence": 0.7}
+    message = captured["json"]["messages"][1]
+    assert message["content"][1]["image_url"]["url"] == data_url
+
+
 def test_chat_requires_key(monkeypatch):
     monkeypatch.setattr(settings, "opencode_go_api_key", "")
     provider = OpenCodeGoProvider()
