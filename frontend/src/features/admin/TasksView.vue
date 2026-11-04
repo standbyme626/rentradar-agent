@@ -54,18 +54,17 @@ const {
   error: coverageError,
   reload: reloadCoverage,
 } = useLazyData(() => adminApi.crawlCoverage(), emptyCoverage)
-const task1 = computed(() => items.value.find((item) => item.id === 1) ?? items.value[0])
-const task2 = computed(() => items.value.find((item) => item.id === 2) ?? items.value[1])
+const primaryTask = computed(() => items.value[0] ?? null)
 const filtersText = computed(() => {
-  if (!task1.value) return '{}'
-  const text = JSON.stringify(task1.value.filters)
+  if (!primaryTask.value) return '{}'
+  const text = JSON.stringify(primaryTask.value.filters)
   return text.length > 140 ? `${text.slice(0, 140)}…` : text
 })
-const fastText = computed(() => `每 ${task1.value?.schedule?.fast_minutes ?? 10} 分钟 · 1 页`)
-const slowText = computed(() => `每 ${task1.value?.schedule?.slow_minutes ?? 180} 分钟 · 分片轮转`)
-const transport = computed(() => String(task1.value?.filters?.transport ?? 'cdp'))
+const fastText = computed(() => `每 ${primaryTask.value?.schedule?.fast_minutes ?? 10} 分钟 · 1 页`)
+const slowText = computed(() => `每 ${primaryTask.value?.schedule?.slow_minutes ?? 180} 分钟 · 分片轮转`)
+const transport = computed(() => String(primaryTask.value?.filters?.transport ?? 'cdp'))
 const shardCount = computed(() => {
-  const conditions = task1.value?.filters?.shard_conditions
+  const conditions = primaryTask.value?.filters?.shard_conditions
   return Array.isArray(conditions) ? conditions.length : 0
 })
 const scopeText = computed(() =>
@@ -179,10 +178,10 @@ async function runTaskRow(task: Task) {
 }
 
 async function runNow() {
-  if (!task1.value || busy.value) return
+  if (!primaryTask.value || busy.value) return
   busy.value = true
   try {
-    const result = await adminApi.runTask(task1.value.id)
+    const result = await adminApi.runTask(primaryTask.value.id)
     toast(`已入队任务 #${result.job_id}`)
   } catch {
     toast('运行失败，请稍后重试')
@@ -205,11 +204,11 @@ async function runNow() {
     <div class="mt-4 grid gap-4 xl:grid-cols-2">
       <section class="card p-4">
         <h3 class="panel-title">
-          任务 1 · 贝壳 5 号线
-          <span class="hint"><span :class="task1?.enabled ? 'tag-green' : 'tag-coral'">{{ task1?.enabled ? '运行中' : '已暂停' }}</span></span>
+          主任务 · 贝壳 5 号线
+          <span class="hint"><span :class="primaryTask?.enabled ? 'tag-green' : 'tag-coral'">{{ primaryTask?.enabled ? '运行中' : '已暂停' }}</span></span>
         </h3>
         <div class="mt-3 space-y-3">
-          <div><label class="label">名称</label><input class="input" :value="task1?.name ?? ''" readonly /></div>
+          <div><label class="label">名称</label><input class="input" :value="primaryTask?.name ?? ''" readonly /></div>
           <div><label class="label">过滤</label><input class="input" :value="filtersText" readonly /></div>
           <div class="grid gap-3 sm:grid-cols-2">
             <div><label class="label">快扫</label><input class="input" :value="fastText" readonly /></div>
@@ -217,29 +216,18 @@ async function runNow() {
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-1.5">
-          <span :class="task1?.enabled ? 'tag-green' : 'tag-coral'">{{ task1?.enabled ? 'enabled=true' : 'enabled=false' }}</span>
+          <span :class="primaryTask?.enabled ? 'tag-green' : 'tag-coral'">{{ primaryTask?.enabled ? 'enabled=true' : 'enabled=false' }}</span>
           <span class="tag-neutral">transport={{ transport }}</span>
           <span class="tag-neutral">{{ scopeText }}</span>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
-          <button class="btn-primary" :disabled="busy || !task1" @click="runNow">
+          <button class="btn-primary" :disabled="busy || !primaryTask" @click="runNow">
             {{ busy ? '提交中…' : '立即运行' }}
           </button>
           <button class="btn" @click="helpOpen = true">CDP 兜底说明</button>
         </div>
       </section>
 
-      <section class="card p-4">
-        <h3 class="panel-title">任务 2 · 链家 <span class="hint"><span class="tag-neutral">未启用</span></span></h3>
-        <div class="mt-3 space-y-3">
-          <div><label class="label">名称</label><input class="input" :value="task2?.name ?? ''" readonly /></div>
-          <div>
-            <label class="label">说明</label>
-            <textarea class="input h-24" readonly>链家 robots 全站 Disallow，不自动抓；仅保留手动链接。当前采集以贝壳 App API 为准。</textarea>
-          </div>
-        </div>
-        <div class="mt-3 flex flex-wrap gap-1.5"><span class="tag-neutral">robots 禁止</span><span class="tag-neutral">手动模式</span></div>
-      </section>
     </div>
 
     <section class="card mt-4 p-4">

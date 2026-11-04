@@ -24,7 +24,7 @@ from app.models import (
     Snapshot,
     Source,
 )
-from app.services import commute_service, listing_service
+from app.services import commute_service, listing_service, score_service
 from app.services.settings_service import (
     destination_key,
     get_commute_destination,
@@ -452,6 +452,7 @@ async def search_cards(
     commute = await _latest_commute(db)
     max_commute = conditions.get("commute")
     cards = []
+    listing_by_id: dict[int, Listing] = {}
     unknown_commute = 0
     for listing, source_code, city_code, poi in rows:
         stats = commute.get(listing.community_id)
@@ -462,6 +463,7 @@ async def search_cards(
                 continue
             if minutes > int(max_commute):
                 continue
+        listing_by_id[listing.id] = listing
         item = listing_service._listing_dict(listing, source_code, city_code)
         item["community_id"] = listing.community_id
         item["score_reasons"] = listing.score_reasons or {}
@@ -475,6 +477,19 @@ async def search_cards(
         item["daily_count"] = poi.daily_count if poi else None
         item["nightlife_count"] = poi.nightlife_count if poi else None
         cards.append(item)
+    # The stored score is materialized at crawl/rescore time. Recompute the
+    # displayed top cards against the current destination so a company change
+    # is reflected immediately, not only after the background job.
+    for item in cards[:12]:
+        listing = listing_by_id.get(int(item.get("id") or 0))
+        if listing is None:
+            continue
+        try:
+            recomputed = await score_service.score_listing(db, listing, {})
+        except Exception:
+            continue
+        if recomputed is not None:
+            item["score"], item["score_reasons"] = recomputed
     if sort_by_commute:
         cards.sort(
             key=lambda item: item["commute_min"]

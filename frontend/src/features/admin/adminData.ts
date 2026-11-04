@@ -5,17 +5,17 @@ import type {
 } from '@/api/contracts'
 import type { Stats } from '@/api/types'
 
-export {
-  stats,
-  listings,
-  candidates,
-  communities,
-  runs,
-  tasks,
-  agentSessions,
-  money,
-  formatTime,
-} from '@/api/mock/admin'
+export const money = (value: number | null | undefined) =>
+  value == null ? '—' : `¥${value.toLocaleString('zh-CN')}`
+
+export const formatTime = (value: string) =>
+  new Date(value).toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 
 export const emptyStats: Stats = {
   listings: 0,

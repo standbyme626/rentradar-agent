@@ -12,6 +12,7 @@ from app.models import (
     Job,
     JobStatus,
     Listing,
+    ListingImageAnalysis,
     ListingStatus,
     PoiCache,
     ProviderUsage,
@@ -184,6 +185,9 @@ async def overview(db: AsyncSession) -> dict:
     scored_geo = stats["scored_geo"]
     scored_commute = stats["scored_commute"]
     no_geo = stats["communities"] - stats["geocoded"]
+    image_count = int(
+        await db.scalar(select(func.count()).select_from(ListingImageAnalysis)) or 0
+    )
     quality = [
         {
             "label": "缺坐标",
@@ -198,10 +202,14 @@ async def overview(db: AsyncSession) -> dict:
             "badge": "中",
         },
         {
-            "label": "详情图",
-            "desc": "列表只有封面；详情图/AI 尚未接入",
-            "tone": "coral",
-            "badge": "未接入",
+            "label": "封面分析",
+            "desc": (
+                f"已分析 {image_count} 套封面/视觉标签"
+                if image_count
+                else "列表封面已入库；图片/AI 分析尚未运行"
+            ),
+            "tone": "green" if image_count else "amber",
+            "badge": "已运行" if image_count else "待运行",
         },
         {
             "label": "外卖样本",
@@ -231,26 +239,54 @@ async def overview(db: AsyncSession) -> dict:
                 "drop": f"-{stats['listings_no_geo']} 缺坐标",
             },
             {"value": scored_commute, "label": "有通勤"},
-            {"value": 0, "label": "有图片/AI", "drop": "未接入"},
+            {
+                "value": image_count,
+                "label": "有图片/AI",
+                "drop": f"已分析 {image_count} 套" if image_count else "未运行",
+            },
         ],
         "quality": quality,
         "runs": await list_runs(db, 10),
         "nextSteps": [
+            *(
+                [
+                    {
+                        "title": "运行封面分析",
+                        "desc": f"已有 {image_count} 套分析；其余候选可在「图片 / AI」页按需运行。",
+                    }
+                ]
+                if image_count == 0
+                else []
+            ),
+            *(
+                [
+                    {
+                        "title": "补评分",
+                        "desc": (
+                            f"{stats['listings'] - stats['scored']} 套尚未评分；"
+                            "先跑本地重评分，再按需补目的地通勤。"
+                        ),
+                    }
+                ]
+                if stats["listings"] > stats["scored"]
+                else []
+            ),
+            *(
+                [
+                    {
+                        "title": "补通勤样本",
+                        "desc": f"{stats['listings_no_commute']} 套房源缺当前目的地通勤样本。",
+                    }
+                ]
+                if stats["listings_no_commute"]
+                else []
+            ),
             {
-                "title": "图片/AI：详情图 + dHash + 可选视觉标签",
-                "desc": "只对候选运行，不占地图额度；先做 Top 5，假房源需多信号交叉。",
-            },
-            {
-                "title": "真实 Agent 工具运行时",
-                "desc": "在规则版之上接 LLM 规划、工具白名单、trace/eval/cost/guardrail。",
-            },
-            {
-                "title": "Top 10 候选跑 p50/p90",
-                "desc": "4 时段 × 工作日；用深圳地铁官方接口替代部分高德调用。",
-            },
-            {
-                "title": "地铁 / 开放数据",
-                "desc": "深圳地铁 MinTimeJson、住建局参考租金；鉴权/额度/监控运行时已接入。",
+                "title": "数据状态",
+                "desc": (
+                    f"线路 {stats['line5']} 套 · 已评分 {stats['scored']} · "
+                    f"通勤样本 {stats['commute_samples']} 条。"
+                ),
             },
         ],
     }
