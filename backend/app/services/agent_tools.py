@@ -448,15 +448,16 @@ async def search_cards(
     commute = await _latest_commute(db)
     max_commute = conditions.get("commute")
     cards = []
+    unknown_commute = 0
     for listing, source_code, city_code, poi in rows:
         stats = commute.get(listing.community_id)
         minutes = round(stats["p50_min"]) if stats else None
-        if (
-            max_commute is not None
-            and minutes is not None
-            and minutes > int(max_commute)
-        ):
-            continue
+        if max_commute is not None:
+            if minutes is None:
+                unknown_commute += 1
+                continue
+            if minutes > int(max_commute):
+                continue
         item = listing_service._listing_dict(listing, source_code, city_code)
         item["community_id"] = listing.community_id
         item["score_reasons"] = listing.score_reasons or {}
@@ -481,6 +482,7 @@ async def search_cards(
         "filtered": len(rows),
         "final": min(len(cards), limit),
         "commute_missing": sum(1 for item in cards if item["commute_min"] is None),
+        "commute_unknown": unknown_commute,
     }
     return cards[:limit], counts
 
