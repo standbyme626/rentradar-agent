@@ -123,7 +123,7 @@ async def score_listing(
 
     # 通勤：小区 → 公司，多时段样本取 p50
     commute_score = 0.5
-    commute_reason = "通勤样本缺失（估算）"
+    commute_reason = "通勤样本缺失（暂按中性 50% 计分）"
     destination = await get_commute_destination(db)
     if listing.community_id and destination:
         key = destination_key(destination)
