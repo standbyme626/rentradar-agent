@@ -37,3 +37,25 @@ def test_conditions_summary():
     assert "预算≤4000" in summary
     assert "2室" in summary
     assert "电梯" in summary
+
+
+def test_parse_explicit_company_changes_destination_condition():
+    conditions = parse_conditions("公司换到南山科技园，预算 4000，通勤 40 分钟")
+    assert conditions["company"] == "南山科技园"
+    assert conditions["company_explicit"] is True
+    assert conditions["budget"] == 4000
+
+
+def test_parse_company_variants():
+    assert parse_conditions("上班地点在福田CBD，预算 5000")["company"] == "福田CBD"
+    assert (
+        parse_conditions("公司位置：深圳湾科技生态园")["company"]
+        == "深圳湾科技生态园"
+    )
+    assert parse_conditions("公司在会展中心")["company"] == "深圳会展中心"
+
+
+def test_default_company_is_not_treated_as_an_explicit_change():
+    conditions = parse_conditions("预算 4000，5 号线，通勤 40 分钟")
+    assert conditions["company"] == "深圳会展中心"
+    assert conditions["company_explicit"] is False
