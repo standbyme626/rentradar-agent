@@ -77,8 +77,20 @@ def _validate_intent(data: dict) -> dict:
     return result
 
 
+def _history_block(history: list[dict] | None, limit: int = 6) -> str:
+    if not history:
+        return ""
+    lines = []
+    for item in history[-limit:]:
+        role = "用户" if item.get("role") == "user" else "助手"
+        text = " ".join(str(item.get("text") or "").split())[:240]
+        if text:
+            lines.append(f"{role}: {text}")
+    return "历史对话：\n" + "\n".join(lines) + "\n" if lines else ""
+
+
 async def parse_intent(
-    db: AsyncSession, message: str, base: dict
+    db: AsyncSession, message: str, base: dict, history: list[dict] | None = None
 ) -> tuple[dict | None, dict]:
     system = (
         "你是 RentRadar 的租房条件解析器。只输出 JSON，不要 markdown。"
@@ -90,8 +102,12 @@ async def parse_intent(
         'company(用户明确说出的公司/上班地点，2-64字的地址或地标；没说就null)。'
         "公司地点不等于居住区域，不要从 company 推断 district。"
         "只提取用户明确说出的条件；已有条件作为默认值，新消息可以覆盖。"
+        "可参考历史对话理解指代，但不要从历史里重新推断用户本轮没说、且已被清除的条件。"
     )
-    user = f"已有条件：{json.dumps(base, ensure_ascii=False)}\n新消息：{message}"
+    user = (
+        _history_block(history)
+        + f"已有条件：{json.dumps(base, ensure_ascii=False)}\n新消息：{message}"
+    )
     started = time.monotonic()
     try:
         result = await provider_runtime.invoke_chat(
@@ -136,7 +152,7 @@ async def parse_intent(
 
 
 async def plan_tools(
-    db: AsyncSession, message: str, conditions: dict
+    db: AsyncSession, message: str, conditions: dict, history: list[dict] | None = None
 ) -> tuple[list[dict] | None, dict]:
     """Ask the model for a strict-JSON, whitelisted tool plan.
 
@@ -154,7 +170,12 @@ async def plan_tools(
         + agent_tools.prompt_catalog()
     )
     user = json.dumps(
-        {"conditions": conditions, "message": message}, ensure_ascii=False
+        {
+            "conditions": conditions,
+            "message": message,
+            "history": _history_block(history),
+        },
+        ensure_ascii=False,
     )
     started = time.monotonic()
     try:
@@ -197,7 +218,7 @@ async def plan_tools(
 
 
 async def plan_tools_native(
-    db: AsyncSession, message: str, conditions: dict
+    db: AsyncSession, message: str, conditions: dict, history: list[dict] | None = None
 ) -> tuple[list[dict] | None, dict]:
     """Native tool_calls planner (OpenCode Go).
 
@@ -212,7 +233,12 @@ async def plan_tools_native(
         "引用本次搜索结果；不要调用写操作，不要输出解释。"
     )
     user = json.dumps(
-        {"conditions": conditions, "message": message}, ensure_ascii=False
+        {
+            "conditions": conditions,
+            "message": message,
+            "history": _history_block(history),
+        },
+        ensure_ascii=False,
     )
     started = time.monotonic()
     try:
@@ -265,6 +291,7 @@ async def answer(
     cards: list[dict],
     conditions: dict,
     tool_results: list[dict] | None = None,
+    history: list[dict] | None = None,
 ) -> tuple[str | None, dict]:
     compact = [
         {
@@ -288,9 +315,14 @@ async def answer(
         "卡片 commute_min 为 null 时只能说明通勤样本缺失，不能推断其满足通勤上限。"
         "如果用户没有提出通勤上限，不要把缺失通勤当成主要结论，也不要说“无法确认是否满足通勤上限”；"
         "可以最后一句简短提醒样本缺失。"
+        "如果用户在问此前对话/最初条件，直接根据历史对话回答，不要用本次卡片硬答，也不要改变当前条件。"
         "不允许建议下单、转账或联系中介之外的写操作。"
     )
-    payload = {"conditions": conditions, "cards": compact}
+    payload = {
+        "conditions": conditions,
+        "cards": compact,
+        "history": _history_block(history),
+    }
     if tool_results:
         payload["tool_results"] = tool_results
     user = json.dumps(payload, ensure_ascii=False)

@@ -88,3 +88,17 @@ def test_merge_keeps_explicit_company():
     assert merged["company"] == "南山科技园"
     assert merged["company_explicit"] is True
     assert merged["district"] is None
+
+
+def test_history_block_keeps_recent_turns():
+    from app.services.llm_service import _history_block
+
+    block = _history_block(
+        [
+            {"role": "user", "text": "预算 4000，5 号线"},
+            {"role": "assistant", "text": "找到 6 套"},
+        ]
+    )
+    assert "用户: 预算 4000，5 号线" in block
+    assert "助手: 找到 6 套" in block
+    assert _history_block([]) == ""
