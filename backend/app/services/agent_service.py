@@ -611,6 +611,18 @@ async def stream(
         yield {"type": "session", "sessionId": session.id, "title": session.title}
 
         base = dict(session.conditions or {})
+        preview = parse_conditions(message, base)
+        await _use_current_destination(db, preview)
+        preview_update = await _sync_commute_destination(db, preview)
+        if preview_update:
+            base = preview
+            yield {
+                "type": "toast",
+                "message": (
+                    f"公司位置已更新为 {preview_update['address']}，"
+                    "正在按新目的地重算评分"
+                ),
+            }
         lower = message.lower()
         quick_text: str | None = None
         quick_saved = False

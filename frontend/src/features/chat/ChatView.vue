@@ -22,7 +22,6 @@ import { useChatStore } from '@/stores/chat'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { useWatchlistStore } from '@/stores/watchlist'
-import { mockData } from '@/api/mockData'
 import { agentApi } from '@/api/services/agent'
 import type { Listing } from '@/api/types'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
@@ -63,7 +62,7 @@ const { toast } = useToast()
 const prompt = ref('')
 const chatInput = ref('')
 const isMobile = ref(false)
-const statCount = ref(mockData.stats.listings)
+const statCount = ref<number | null>(null)
 
 async function signOut() {
   await auth.logout()
@@ -242,7 +241,7 @@ function removeCondition(label: string) {
           class="hidden items-center gap-1.5 rounded-full border border-line bg-paper/70 px-3 py-1 text-[11px] text-muted sm:inline-flex"
         >
           <span class="h-1.5 w-1.5 rounded-full bg-forest" />
-          本地已索引 <b class="font-semibold text-ink">{{ statCount }}</b> 套
+          本地已索引 <b class="font-semibold text-ink">{{ statCount ?? '—' }}</b> 套
         </span>
         <button class="btn-ghost btn-sm" title="新对话" @click="reset">
           <Plus :size="16" />
@@ -333,7 +332,7 @@ function removeCondition(label: string) {
         </div>
 
         <div class="mt-5 flex flex-wrap justify-center gap-4 text-[11.5px] text-faint">
-          <span class="inline-flex items-center gap-1.5"><i class="h-1 w-1 rounded-full bg-forest/60" />先查本地 {{ statCount }} 套</span>
+          <span class="inline-flex items-center gap-1.5"><i class="h-1 w-1 rounded-full bg-forest/60" />先查本地 {{ statCount ?? '—' }} 套</span>
           <span class="inline-flex items-center gap-1.5"><i class="h-1 w-1 rounded-full bg-forest/60" />只为候选算通勤</span>
           <span class="inline-flex items-center gap-1.5"><i class="h-1 w-1 rounded-full bg-forest/60" />不自动下单</span>
         </div>
@@ -442,7 +441,7 @@ function removeCondition(label: string) {
       </section>
     </main>
 
-    <ConditionSheet :open="sheetOpen" @close="store.closeSheet()" @apply="applyConditions" />
+    <ConditionSheet :open="sheetOpen" :company="conditions.company" @close="store.closeSheet()" @apply="applyConditions" />
     <ListingDetailDrawer
       :listing="detail"
       :loading="detailLoading"
