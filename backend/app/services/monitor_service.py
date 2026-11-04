@@ -9,12 +9,12 @@ from app.core.logging import get_logger
 from app.models import (
     AgentMonitor,
     AgentMonitorMatch,
-    CommuteSample,
     Event,
     EventType,
     Listing,
     ListingStatus,
 )
+from app.services import commute_service
 from app.services.notify_service import send_text
 from app.services.settings_service import (
     destination_key,
@@ -103,15 +103,20 @@ def matches_conditions(
 async def _latest_commute(db: AsyncSession) -> dict[int, int]:
     destination = await get_commute_destination(db)
     key = destination_key(destination)
-    stmt = select(
-        CommuteSample.community_id, CommuteSample.duration_s, CommuteSample.fetched_at
-    ).order_by(CommuteSample.fetched_at.desc())
-    if key:
-        stmt = stmt.where(CommuteSample.destination_key == key)
-    result: dict[int, int] = {}
-    for community_id, duration_s, _ in (await db.execute(stmt)).all():
-        result.setdefault(community_id, duration_s)
-    return result
+    if key is None:
+        return {}
+    stats = await commute_service.bulk_stats(db, key, destination=destination)
+    if not stats:
+        nearest = await commute_service.nearest_destination_key(db, key)
+        if nearest is not None:
+            stats = await commute_service.bulk_stats(
+                db, nearest, destination=destination
+            )
+    return {
+        community_id: round(item["p50_min"])
+        for community_id, item in stats.items()
+        if item.get("p50_min") is not None
+    }
 
 
 def _price_drop_ok(event: Event, threshold: float) -> bool:
