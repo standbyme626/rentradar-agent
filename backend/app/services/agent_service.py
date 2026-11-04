@@ -11,9 +11,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models import AgentMonitor, AgentSession, AgentToolCall
+from app.models import (
+    AgentMonitor,
+    AgentSession,
+    AgentToolCall,
+    Job,
+    JobStatus,
+    Listing,
+    ListingStatus,
+    Task,
+)
 from app.services import agent_tools, guardrails, llm_service
-from app.services.settings_service import get_admin_settings
+from app.services.settings_service import (
+    get_admin_settings,
+    get_commute_destination,
+    set_commute_destination,
+)
 
 log = get_logger("agent")
 
@@ -99,6 +112,43 @@ def _has_positive(text: str, word: str) -> bool:
     return False
 
 
+COMPANY_PATTERNS = (
+    re.compile(
+        r"(?:公司|上班|工作|单位)(?:位置|地点|地址)?(?:在|位于|是|改为|改成|换到|换成|换去|定在|到)?"
+        r"\s*[:：]?\s*([^\s，,。；;、]{2,32})"
+    ),
+    re.compile(r"(?:通勤|上班)(?:到|去)\s*([^\s，,。；;、]{2,32})"),
+)
+COMPANY_STOP_WORDS = (
+    "预算",
+    "通勤",
+    "号线",
+    "地铁",
+    "附近",
+    "上班",
+    "工作",
+    "小区",
+    "房子",
+)
+COMPANY_GENERIC = {"公司", "单位", "工作", "上班", "地点", "位置", "还是", "会展中心"}
+
+
+def _extract_company(text: str) -> str | None:
+    """Extract an explicit office / commute destination from free text."""
+    for pattern in COMPANY_PATTERNS:
+        for match in pattern.finditer(text):
+            value = match.group(1).strip()
+            value = re.sub(r"^(在|到|去|是)", "", value)
+            for stop in COMPANY_STOP_WORDS:
+                if stop in value:
+                    value = value.split(stop, 1)[0]
+            value = value.strip("，,。；;、 ")
+            if len(value) < 2 or value in COMPANY_GENERIC:
+                continue
+            return value[:64]
+    return None
+
+
 def _extract_must(text: str) -> list[str]:
     must = []
     for tag in ("电梯", "近地铁", "精装"):
@@ -113,6 +163,7 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
     base = dict(base or {})
     conditions = {
         "company": base.get("company", "深圳会展中心"),
+        "company_explicit": bool(base.get("company_explicit", False)),
         "line": "5号线" if "5号线" in message else base.get("line", "5号线"),
         "budget": base.get("budget"),
         "commute": base.get("commute"),
@@ -132,8 +183,13 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
         conditions["layout"] = layout
     if district is not None:
         conditions["district"] = district
-    if "会展中心" in message:
+    company = _extract_company(message)
+    if company:
+        conditions["company"] = company
+        conditions["company_explicit"] = True
+    elif "会展中心" in message:
         conditions["company"] = "深圳会展中心"
+        conditions["company_explicit"] = True
     conditions["must"] = sorted(set(conditions["must"]) | set(_extract_must(message)))
     conditions["isLong"] = conditions["district"] == "龙岗区" or bool(
         conditions.get("budget") and conditions["budget"] <= 3000
@@ -261,6 +317,8 @@ def _merge_llm_conditions(rule: dict, intent: dict | None) -> dict:
     for key in ("budget", "commute", "layout", "district", "company"):
         value = intent.get(key)
         if value is not None:
+            if key == "company" and value != merged.get("company"):
+                merged["company_explicit"] = True
             merged[key] = value
     if intent.get("must"):
         merged["must"] = sorted(set(merged.get("must") or []) | set(intent["must"]))
@@ -272,6 +330,63 @@ def _merge_llm_conditions(rule: dict, intent: dict | None) -> dict:
 
 def _session_title(message: str) -> str:
     return " ".join(message.split())[:24] or "找房会话"
+
+
+async def _use_current_destination(db: AsyncSession, conditions: dict) -> None:
+    """Show the persisted destination when the user did not name a company."""
+    if conditions.get("company_explicit"):
+        return
+    current = await get_commute_destination(db)
+    address = str((current or {}).get("address") or "").strip()
+    if address:
+        conditions["company"] = address
+
+
+async def _sync_commute_destination(db: AsyncSession, conditions: dict) -> dict | None:
+    """Persist an explicit office change and refresh commute-based scores."""
+    if not conditions.get("company_explicit"):
+        return None
+    company = str(conditions.get("company") or "").strip()
+    if not company:
+        return None
+    current = await get_commute_destination(db)
+    if current and str(current.get("address") or "") == company:
+        return None
+    try:
+        value = await set_commute_destination(db, company, city="深圳")
+    except Exception as exc:
+        log.warning("commute_destination_update_failed", company=company, error=str(exc)[:200])
+        return None
+    # Re-score the current top candidates synchronously so the next search
+    # does not show reasons computed against the previous destination, then
+    # let the worker refresh the full task in the background.
+    task = await db.get(Task, 1)
+    if task is not None:
+        try:
+            from app.services.enrich_service import rescore_listings
+
+            ids = (
+                await db.execute(
+                    select(Listing.id)
+                    .where(Listing.status == ListingStatus.active)
+                    .order_by(Listing.score.desc().nullslast(), Listing.id.desc())
+                    .limit(300)
+                )
+            ).scalars().all()
+            await rescore_listings(db, task, [int(item) for item in ids])
+            db.add(
+                Job(
+                    task_id=task.id,
+                    type="analysis",
+                    payload={"listing_ids": []},
+                    status=JobStatus.queued,
+                )
+            )
+            await db.commit()
+        except Exception as exc:
+            await db.rollback()
+            log.warning("commute_rescore_failed", error=str(exc)[:200])
+    return value
 
 
 async def _save_session(
@@ -599,6 +714,16 @@ async def stream(
             yield {"type": "done"}
             return
 
+        await _use_current_destination(db, conditions)
+        destination_update = await _sync_commute_destination(db, conditions)
+        if destination_update:
+            yield {
+                "type": "toast",
+                "message": (
+                    f"公司位置已更新为 {destination_update['address']}，"
+                    "正在按新目的地重算评分"
+                ),
+            }
         if new_session:
             steps = None
             if allow_llm and settings.agent_native_tools:
