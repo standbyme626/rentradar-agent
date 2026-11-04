@@ -10,10 +10,12 @@ import {
   ListFilter,
   LogOut,
   Menu,
+  MessageSquareWarning,
   Plug,
   Route,
   ScrollText,
   Settings,
+  ShieldCheck,
   TriangleAlert,
   X,
 } from 'lucide-vue-next'
@@ -48,6 +50,7 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
       { to: '/admin/candidates', label: '候选工作台', icon: ListFilter },
       { to: '/admin/commute', label: '通勤与预算', icon: Route },
       { to: '/admin/quality', label: '数据质量', icon: TriangleAlert },
+      { to: '/admin/reputation', label: '口碑证据', icon: MessageSquareWarning },
     ],
   },
   {
@@ -56,11 +59,12 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
   },
   {
     label: '内容',
-    items: [{ to: '/admin/images', label: '图片 / AI', icon: Image, badge: '0', badgeTone: 'coral' }],
+    items: [{ to: '/admin/images', label: '图片 / AI', icon: Image, badge: 'P1', badgeTone: 'coral' }],
   },
   {
     label: '运营',
     items: [
+      { to: '/admin/ops', label: '运维', icon: ShieldCheck, badge: 'P2' },
       { to: '/admin/providers', label: 'API 管理', icon: Plug },
       { to: '/admin/tasks', label: '采集任务', icon: Clock3, badge: 'API' },
       { to: '/admin/logs', label: '运行日志', icon: ScrollText },

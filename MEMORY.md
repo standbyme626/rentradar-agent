@@ -137,10 +137,14 @@
 - `enrich` 默认上限 100（单次约 500 次高德调用）、`rescore` 默认上限 2000（本地计算）；重复跑不会只处理前 200/500 条。
 - API 只绑 LAN；已启用登录/RBAC，但仍**不要直接公网暴露**；公网前需 TLS/反向代理/限流。
 - FastAPI SPA fallback 已对 `/api/*` 返回 JSON 404；未实现接口不会再返回 index.html。
-- API 管理页、管理端全部页面走真实后端；用户端聊天已切真实 LLM Agent，未配置/失败时回退规则版；Agent 评测/成本页仍为设计预览。
-- `analysis` job 只做本地重评分，`sampling` job 只做单次采样；详情图/AI/p50/p90 尚未接入。
+- API 管理页、管理端全部页面走真实后端；用户端聊天已切真实 LLM Agent，未配置/失败时回退规则版；Agent 评测/成本页已接真实基线（2026-11-04）。
+- `analysis` job 只做本地重评分，`sampling` job 只做单次采样；新增 `image_analysis` job 分析候选封面；详情多图仍不可用。
 - `admin_settings` 已在通知、调度、额度、Agent 预算事件和监控推送运行时读取；设置页保存即生效。
-- Agent 接入 LLM 后仍以本地库存为工具，不抓详情、不做图片 AI；LLM 失败自动回退，不能把规则版回答标成模型输出。
+- Agent 已接只读工具运行时（search/get/compare/commute/price），严格 JSON 计划 + 规则兜底；预算/PII/注入护栏；trace 落 `agent_tool_calls`；LLM 失败自动回退，不能把规则版回答标成模型输出。
+- 封面管线只处理列表单图：本地缓存 + 64-bit dHash + 价格异常 + 中介话术；≥2 个非质量信号才可疑；视觉大模型未授权，`APP_IMAGE_VISION_ENABLED=false`。
+- 口碑证据表 `reputation_mentions`：verified 计分、uncertain 只展示、rejected 排除；180 天半衰期；无证据显示“数据不足（中性分）”。
+- 地图数据走 `/api/maps/communities`（GCJ-02→WGS-84）；天地图瓦片由后端 `/api/maps/tiles/...` 代理缓存，Key 不下发浏览器；无 Key 时前端回退坐标网格。
+- P1 迁移 head `b2c3d4e5f6a7`（工具 trace / 封面 / 口碑 / 评测表）。
 - ModelScope Key 已配置：provider 状态正常；业务 LLM 调用已回写 provider_usage。Key 来源 `/root/.credentials/modelscope.env`，项目 `.env` 为 600。
 - V4.1F 是推理模型，响应含 `reasoning_content`；`max_tokens` 太小会把预算耗在思考上，当前解析 1200 / 回答 900。
 - 模型页虽标 `SupportApiInference:false`，但 `/v1/models` 与真实 chat 均确认 `-1017` 可用；单模型约 500 次/天，注意别刷。
@@ -168,6 +172,10 @@ curl -s http://192.168.31.197:8010/api/admin/providers | python -m json.tool
 curl -s -X POST http://192.168.31.197:8010/api/admin/providers/tianditu/test | python -m json.tool
 ```
 
+## 验证基线（2026-11-04）
+
+- 后端 119 passed；ruff 全绿；前端 `npm run build` 通过。
+
 ## 验证基线（2026-10-31）
 
 - `pytest -q` → 57 passed；`ruff check app tests` 全绿；`npm run build` 通过。
@@ -188,3 +196,17 @@ curl -s -X POST http://192.168.31.197:8010/api/admin/providers/tianditu/test | p
 ## 交接
 
 完整交接见 `HANDOFF.md`。当前生产采集走贝壳 App API，快扫/慢扫均已恢复；CDP 因验证码暂停，仅作兜底。鉴权/额度/设置/监控运行时已接；下一步是 Agent 工具运行时、5 号线覆盖、图片 AI、地铁/开放数据与通勤 p50/p90。
+
+## P2/P3 收口（2026-11-04）
+
+> 分支 `agent/implement-p2-p4-5fe8bf7e4a90`，基于 P1（PR #4）。迁移 head `d4e5f6a7b8c9`。
+
+- **AI Provider**：新增 `opencode_go_deepseek`（OpenCode Go · DeepSeek V4.1 Flash），优先级 5；ModelScope 降为兜底。配置 `OPENCODE_GO_API_KEY/BASE_URL/MODEL`。网关要求真实 UA + `x-opencode-session`，客户端已内置；`403/error 1010` 多半是缺这两个头。真实调用 2.8s 成功；原生 tool_calls 返回 `search_listings`。`aiDailyCap` 现在对所有 AI domain Provider 生效。
+- **Agent 原生工具**：`APP_AGENT_NATIVE_TOOLS=false` 默认关闭；开启后 `llm_service.plan_tools_native` 先走 tool_calls，失败回退严格 JSON，再回退规则版。工具参数仍本地校验；`save_monitor` 不在原生工具列表。
+- **运维**：`alert_service` + scheduler `alert_check` + worker；告警覆盖 DB/队列/源连续失败/Provider 熔断/磁盘/备份失败与过期；阈值在设置页；状态存 `app_settings.alert_state`；管理端 `/admin/ops`。备份脚本写 `last_backup.json`，新增 `restore-drill.sh` 临时库演练。
+- **只读分享**：`share_links` 表只存 SHA-256；`/api/public/dashboard/<token>` 聚合 + 60/分/IP 限流 + `X-Robots-Tag: noindex`；前端 `/share/:token`。不含标题/图片/地址/联系方式。公网前仍需 TLS/反代。
+- **多城市/多源**：城市/来源管理 API + `/admin/ops` 开关；scheduler 单任务异常不再中断整轮；`manual` JSON/CSV 导入源（默认停用）；`ziroom` 公开列表 API 已接入（默认停用，价格从 PNG 精灵图解码）；跨源同小区/户型/租金(±3%)/面积(±5%) 去重并记 alias。
+- **参考租金**：`reference_rents` 表 + 导入/删除 API/CLI；评分价格项有参考价时优先于挂牌中位价；没有住建局 API，当前为人工导入。
+- **CI**：`.github/workflows/ci.yml`（ruff+pytest、Postgres 迁移升降级、前端构建）。
+- **测试**：154 passed；ruff 全绿；前端 `vue-tsc` + `npm run build` 通过；迁移离线 SQL 通过。
+- **仍未验证**：生产迁移/备份/恢复、覆盖率与 Top 候选数据、iPhone 外卖样本、天地图 Key、视觉标签、58/自如真实源、住建局自动取数。详见 `docs/P2-P4-COMPLETION.md`。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ExternalLink, Loader2, Sparkles } from 'lucide-vue-next'
+import { ExternalLink, Image as ImageIcon, Loader2, Sparkles } from 'lucide-vue-next'
 import type { Inspection, ListingDetail, ScoreReasons } from '@/api/types'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import CoverPlaceholder from '@/components/ui/CoverPlaceholder.vue'
@@ -80,6 +80,31 @@ const priceText = computed(() => {
 })
 const commute = computed(() => props.listing?.commute_stats ?? null)
 const probes = computed(() => (props.listing?.delivery_probes ?? []).slice(0, 3))
+const reputation = computed(() => props.listing?.reputation ?? null)
+const reputationMentions = computed(() => reputation.value?.mentions ?? [])
+const imageAnalysis = computed(() => props.listing?.image_analysis ?? null)
+const fakeSignals = computed(() =>
+  (imageAnalysis.value?.signals ?? []).filter((item) => !['low_resolution', 'dark_cover', 'cover_missing', 'cover_unavailable'].includes(item.code)),
+)
+const qualitySignals = computed(() =>
+  (imageAnalysis.value?.signals ?? []).filter((item) => ['low_resolution', 'dark_cover', 'cover_missing', 'cover_unavailable'].includes(item.code)),
+)
+
+function visionTags(analysis: { quality?: Record<string, unknown> } | null | undefined) {
+  const vision = analysis?.quality?.vision
+  if (!vision || typeof vision !== 'object') return []
+  const tags = (vision as { tags?: unknown }).tags
+  return Array.isArray(tags)
+    ? (tags as Array<{ tag: string; confidence: number }>).slice(0, 6)
+    : []
+}
+
+function verdictLabel(value: string | undefined) {
+  if (value === 'suspicious') return '可疑（≥2 信号）'
+  if (value === 'watch') return '观察（1 个信号）'
+  if (value === 'clear') return '未见异常'
+  return '未分析'
+}
 const watchState = computed(() => props.listing?.watch_state ?? null)
 const inspectionDone = computed(() => checkedCount(inspectionItems.value))
 
@@ -127,7 +152,7 @@ function saveWatchNote() {
       </div>
 
       <CoverPlaceholder :name="listing.community_name" :variant="0" height="150px" />
-      <p class="mt-1.5 text-[10px] text-faint">列表只提供封面图；详情图/AI 尚未接入，不用占位图冒充实拍。</p>
+      <p class="mt-1.5 text-[10px] text-faint">列表只提供封面图；详情多图不可用，封面分析/视觉标签以管理端真实结果为准。</p>
 
       <div class="mt-3 flex flex-wrap gap-1.5">
         <span class="tag-green">评分 {{ listing.score ?? '—' }}</span>
@@ -212,6 +237,78 @@ function saveWatchNote() {
       </p>
 
       <h4 class="mt-5 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">
+        <ImageIcon :size="12" /> 封面分析
+      </h4>
+      <div v-if="imageAnalysis" class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11px] leading-5 text-muted">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span
+            class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            :class="imageAnalysis.verdict === 'suspicious' ? 'tag-coral' : imageAnalysis.verdict === 'watch' ? 'tag-amber' : 'tag-green'"
+          >{{ verdictLabel(imageAnalysis.verdict) }}</span>
+          <span class="tag-neutral">置信度 {{ imageAnalysis.confidence != null ? `${Math.round(imageAnalysis.confidence * 100)}%` : '—' }}</span>
+          <span class="tag-neutral">dHash 已算</span>
+          <span v-if="imageAnalysis.needs_vision" class="tag-amber">视觉标签待生成</span>
+        </div>
+        <div v-if="fakeSignals.length" class="mt-2 flex flex-wrap gap-1">
+          <span v-for="signal in fakeSignals" :key="signal.code" class="rounded border border-coral/30 bg-coral-soft px-1.5 py-0.5 text-[9.5px] text-coral" :title="JSON.stringify(signal.evidence)">
+            {{ signal.label }} · {{ Math.round(signal.confidence * 100) }}%
+          </span>
+        </div>
+        <div v-else class="mt-2 text-[10.5px] text-faint">未命中重复封面 / 低价 / 中介话术信号；这不等于图片真实。</div>
+        <div v-if="visionTags(imageAnalysis).length" class="mt-2 flex flex-wrap gap-1">
+          <span
+            v-for="tag in visionTags(imageAnalysis)"
+            :key="tag.tag"
+            class="rounded border border-forest/20 bg-forest-soft px-1.5 py-0.5 text-[9.5px] text-forest"
+          >
+            {{ tag.tag }} · {{ Math.round(tag.confidence * 100) }}%
+          </span>
+        </div>
+        <div v-if="qualitySignals.length" class="mt-1 text-[10px] text-faint">
+          质量提示：{{ qualitySignals.map((item) => item.label).join('、') }}
+        </div>
+        <div v-if="imageAnalysis.quality?.width" class="mt-1 text-[10px] text-faint">
+          封面 {{ imageAnalysis.quality.width }}×{{ imageAnalysis.quality.height }} · 亮度 {{ imageAnalysis.quality.brightness }}
+        </div>
+      </div>
+      <p v-else class="mt-2 rounded-xl border border-dashed border-line2 bg-paper2 px-3.5 py-3 text-[11px] text-muted">
+        暂无封面分析。管理端「图片 / AI」页对候选运行后，这里才展示证据，不用设计值占位。
+      </p>
+
+      <h4 class="mt-5 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">
+        <Sparkles :size="12" /> 口碑证据
+      </h4>
+      <div v-if="reputation" class="mt-2 rounded-xl border border-line bg-paper2 px-3.5 py-3 text-[11px] leading-5 text-muted">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span
+            class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            :class="reputation.status === 'high' ? 'tag-coral' : reputation.status === 'watch' ? 'tag-amber' : reputation.status === 'low' ? 'tag-green' : 'tag-neutral'"
+          >{{ reputation.label }}</span>
+          <span class="tag-neutral">{{ reputation.count }} 条已确认</span>
+          <span v-if="reputation.uncertain" class="tag-amber">{{ reputation.uncertain }} 条待确认（不计分）</span>
+          <span v-if="reputation.sources?.length" class="tag-neutral">{{ reputation.sources.join(' / ') }}</span>
+        </div>
+        <div v-if="reputation.top_issue_label" class="mt-1 text-[10.5px] text-faint">主要问题：{{ reputation.top_issue_label }}</div>
+        <div v-if="reputationMentions.length" class="mt-2 space-y-1.5">
+          <div v-for="mention in reputationMentions.slice(0, 4)" :key="mention.id" class="rounded-lg border border-line bg-paper px-2.5 py-1.5">
+            <div class="flex items-center gap-1.5 text-[9.5px] text-faint">
+              <span>{{ mention.source }}</span>
+              <span>· {{ mention.match_status === 'uncertain' ? '待确认' : '已确认' }}</span>
+              <span>· 置信度 {{ Math.round(mention.confidence * 100) }}%</span>
+              <a v-if="mention.url" :href="mention.url" target="_blank" rel="noopener noreferrer" class="ml-auto inline-flex items-center gap-0.5 text-forest">
+                原文 <ExternalLink :size="9" />
+              </a>
+            </div>
+            <div class="mt-0.5 line-clamp-2 text-[10.5px] text-muted">{{ mention.excerpt }}</div>
+          </div>
+        </div>
+        <div v-else class="mt-1.5 text-[10.5px] text-faint">有聚合结论但未返回证据详情；管理端「口碑证据」页可查看。</div>
+      </div>
+      <p v-else class="mt-2 rounded-xl border border-dashed border-line2 bg-paper2 px-3.5 py-3 text-[11px] text-muted">
+        口碑数据不足（中性分）；没有证据就不下结论。
+      </p>
+
+      <h4 class="mt-5 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">
         <Sparkles :size="12" /> 看房清单与检查
       </h4>
       <div class="mt-2 flex flex-wrap gap-1.5">
@@ -269,7 +366,7 @@ function saveWatchNote() {
 
       <h4 class="mt-5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">图片 / AI</h4>
       <div class="mt-2 rounded-xl border border-forest/20 bg-forest-soft/60 px-3.5 py-3 text-[11px] leading-6 text-muted">
-        真实版本：封面 pHash 去重 + 视觉标签 + 置信度 + 原文证据。当前未接入，不用演示值冒充。
+        已接入：封面 dHash 去重 + 可选视觉标签/置信度 + 价格/话术证据；详情多图不可用，不虚构图片结论。
       </div>
     </template>
 

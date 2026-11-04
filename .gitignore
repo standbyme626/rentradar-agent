@@ -23,7 +23,10 @@ frontend/dist/
 
 # runtime data
 logs/
-data/
+/data/
 state/
 images/
 *.log
+
+# agent golden eval set is source code, not runtime data
+!backend/app/data/

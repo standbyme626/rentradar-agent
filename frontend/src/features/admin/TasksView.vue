@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { CrawlCoverage } from '@/api/contracts'
+import type { CityInfo, SourceInfo, Task } from '@/api/types'
 import { adminApi } from '@/api/services/admin'
 import { useLazyData } from '@/composables/useLazyData'
 import { useToast } from '@/composables/useToast'
@@ -10,7 +11,36 @@ import { tasks as tasksSnapshot } from './adminData'
 const { toast } = useToast()
 const helpOpen = ref(false)
 const busy = ref(false)
+const taskSheet = ref(false)
+const taskMode = ref<'create' | 'edit'>('create')
+const taskBusy = ref(false)
+const cities = ref<CityInfo[]>([])
+const sources = ref<SourceInfo[]>([])
+const editingFilters = ref<Record<string, unknown>>({})
+const taskForm = reactive({
+  id: 0,
+  name: '',
+  cityCode: 'sz',
+  sourceCode: 'beike',
+  enabled: true,
+  fastMinutes: 10,
+  slowMinutes: 180,
+  line: 'li110460696',
+  transport: 'api',
+  feedPath: '',
+})
 const { data: items, loading, error, reload } = useLazyData(() => adminApi.tasks(), tasksSnapshot)
+
+async function reloadCatalog() {
+  try {
+    const [cityRows, sourceRows] = await Promise.all([adminApi.cities(), adminApi.sources()])
+    cities.value = cityRows.filter((item) => item.enabled)
+    sources.value = sourceRows.filter((item) => item.supported)
+  } catch {
+    toast('城市/来源加载失败')
+  }
+}
+reloadCatalog()
 const emptyCoverage: CrawlCoverage = {
   task_id: null,
   task_name: null,
@@ -53,6 +83,101 @@ const coverageTime = computed(() =>
       })
     : '—',
 )
+
+function openCreate() {
+  taskMode.value = 'create'
+  editingFilters.value = {}
+  Object.assign(taskForm, {
+    id: 0,
+    name: '新建采集任务',
+    cityCode: cities.value[0]?.code ?? 'sz',
+    sourceCode: 'beike',
+    enabled: true,
+    fastMinutes: 10,
+    slowMinutes: 180,
+    line: 'li110460696',
+    transport: 'api',
+    feedPath: '',
+  })
+  taskSheet.value = true
+}
+
+function openEdit(task: Task) {
+  taskMode.value = 'edit'
+  const filters = task.filters ?? {}
+  editingFilters.value = { ...filters }
+  Object.assign(taskForm, {
+    id: task.id,
+    name: task.name,
+    cityCode: task.city_code ?? 'sz',
+    sourceCode: task.source_code ?? 'beike',
+    enabled: task.enabled,
+    fastMinutes: task.schedule?.fast_minutes ?? 10,
+    slowMinutes: task.schedule?.slow_minutes ?? 180,
+    line: String(filters.line ?? 'li110460696'),
+    transport: String(filters.transport ?? 'api'),
+    feedPath: String(filters.feed_path ?? ''),
+  })
+  taskSheet.value = true
+}
+
+async function saveTask() {
+  if (taskBusy.value) return
+  taskBusy.value = true
+  try {
+    const nextFilters = taskForm.sourceCode === 'manual'
+      ? { feed_path: taskForm.feedPath }
+      : { line: taskForm.line, transport: taskForm.transport, fast_pages: 1 }
+    const filters = taskMode.value === 'edit'
+      ? { ...editingFilters.value, ...nextFilters }
+      : nextFilters
+    const schedule = { fast_minutes: taskForm.fastMinutes, slow_minutes: taskForm.slowMinutes }
+    if (taskMode.value === 'create') {
+      await adminApi.createTask({
+        name: taskForm.name,
+        cityCode: taskForm.cityCode,
+        sourceCode: taskForm.sourceCode,
+        filters,
+        schedule,
+        enabled: taskForm.enabled,
+      })
+      toast('任务已创建')
+    } else {
+      await adminApi.updateTask(taskForm.id, {
+        name: taskForm.name,
+        enabled: taskForm.enabled,
+        filters,
+        schedule,
+      })
+      toast('任务已更新')
+    }
+    taskSheet.value = false
+    reload()
+  } catch {
+    toast('保存失败，请检查过滤条件')
+  } finally {
+    taskBusy.value = false
+  }
+}
+
+async function toggleTask(task: Task) {
+  try {
+    await adminApi.updateTask(task.id, { enabled: !task.enabled })
+    reload()
+    toast(`任务 #${task.id} 已${task.enabled ? '暂停' : '启用'}`)
+  } catch {
+    toast('任务状态更新失败')
+  }
+}
+
+async function runTaskRow(task: Task) {
+  try {
+    const result = await adminApi.runTask(task.id)
+    toast(`已入队任务 #${result.job_id}`)
+  } catch {
+    toast('运行失败，请稍后重试')
+  }
+}
 
 async function runNow() {
   if (!task1.value || busy.value) return
@@ -173,6 +298,47 @@ async function runNow() {
     </section>
 
     <section class="card mt-4 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h3 class="panel-title">全部任务 <span class="hint">城市 / 来源独立开关</span></h3>
+        <button class="btn" @click="openCreate">新建任务</button>
+      </div>
+      <div class="mt-3 overflow-x-auto rounded-xl border border-line">
+        <table class="w-full text-left text-[11.5px]">
+          <thead class="border-b border-line bg-paper2 text-[9.5px] uppercase tracking-wide text-faint">
+            <tr>
+              <th class="px-3 py-2 font-semibold">任务</th>
+              <th class="px-3 py-2 font-semibold">城市 / 来源</th>
+              <th class="px-3 py-2 font-semibold">节奏</th>
+              <th class="px-3 py-2 font-semibold">状态</th>
+              <th class="px-3 py-2 font-semibold">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="task in items" :key="task.id" class="border-b border-line last:border-0">
+              <td class="px-3 py-2">
+                <div class="font-semibold">#{{ task.id }} · {{ task.name }}</div>
+                <div class="mono text-[9.5px] text-faint">{{ JSON.stringify(task.filters).slice(0, 90) }}</div>
+              </td>
+              <td class="px-3 py-2">{{ task.city_code ?? 'sz' }} / {{ task.source_code ?? 'beike' }}</td>
+              <td class="px-3 py-2 text-muted">{{ task.schedule?.fast_minutes ?? 10 }} / {{ task.schedule?.slow_minutes ?? 180 }} 分钟</td>
+              <td class="px-3 py-2">
+                <span :class="task.enabled ? 'tag-green' : 'tag-neutral'">{{ task.enabled ? '运行中' : '已暂停' }}</span>
+              </td>
+              <td class="px-3 py-2">
+                <div class="flex flex-wrap gap-2 text-[10px]">
+                  <button class="underline" @click="openEdit(task)">编辑</button>
+                  <button class="underline" @click="toggleTask(task)">{{ task.enabled ? '暂停' : '启用' }}</button>
+                  <button class="underline" @click="runTaskRow(task)">运行</button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!items.length"><td colspan="5" class="px-3 py-8 text-center text-[10.5px] text-faint">暂无任务</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card mt-4 p-4">
       <h3 class="panel-title">采集器行为 <span class="hint">当前主通道</span></h3>
       <div class="mt-3 grid gap-4 sm:grid-cols-3">
         <div><div class="text-[10px] text-faint">通道</div><div class="mt-0.5 text-[13px] font-semibold">贝壳 App API</div><div class="text-[10px] text-muted">免登录、免签名；CDP 兜底</div></div>
@@ -198,6 +364,38 @@ async function runNow() {
       </div>
       <template #footer>
         <button class="btn" @click="helpOpen = false">关闭</button>
+      </template>
+    </AppSheet>
+
+    <AppSheet :open="taskSheet" :title="taskMode === 'create' ? '新建任务' : '编辑任务'" @close="taskSheet = false">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div><label class="label">名称</label><input v-model="taskForm.name" class="input" /></div>
+        <div><label class="label">启用</label><input v-model="taskForm.enabled" type="checkbox" class="mt-2" /></div>
+        <div v-if="taskMode === 'create'">
+          <label class="label">城市</label>
+          <select v-model="taskForm.cityCode" class="input">
+            <option v-for="city in cities" :key="city.code" :value="city.code">{{ city.name }}</option>
+          </select>
+        </div>
+        <div v-if="taskMode === 'create'">
+          <label class="label">来源</label>
+          <select v-model="taskForm.sourceCode" class="input">
+            <option v-for="source in sources" :key="source.code" :value="source.code">{{ source.name }}</option>
+          </select>
+        </div>
+        <div><label class="label">快扫（分钟）</label><input v-model.number="taskForm.fastMinutes" type="number" min="1" class="input" /></div>
+        <div><label class="label">慢扫（分钟）</label><input v-model.number="taskForm.slowMinutes" type="number" min="1" class="input" /></div>
+        <template v-if="taskForm.sourceCode === 'manual'">
+          <div class="sm:col-span-2"><label class="label">feed 文件路径</label><input v-model="taskForm.feedPath" class="input" placeholder="data/manual/brand-apartments.json" /></div>
+        </template>
+        <template v-else>
+          <div><label class="label">线路 condition</label><input v-model="taskForm.line" class="input" /></div>
+          <div><label class="label">通道</label><input v-model="taskForm.transport" class="input" /></div>
+        </template>
+      </div>
+      <template #footer>
+        <button class="btn" @click="taskSheet = false">取消</button>
+        <button class="btn-primary" :disabled="taskBusy" @click="saveTask">{{ taskBusy ? '保存中…' : '保存' }}</button>
       </template>
     </AppSheet>
   </div>

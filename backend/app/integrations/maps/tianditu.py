@@ -19,6 +19,8 @@ from app.integrations.base import (
 
 GEOCODER_URL = "http://api.tianditu.gov.cn/geocoder"
 SEARCH_URL = "http://api.tianditu.gov.cn/v2/search"
+TILE_URL = "https://t{s}.tianditu.gov.cn/{layer}_w/wmts"
+TILE_LAYERS = {"vec", "img", "ter", "cva", "cia", "cta"}
 
 
 def keyword_for_types(types: str) -> str:
@@ -39,6 +41,7 @@ class TiandituProvider(BaseProvider):
                 Capability.geocode,
                 Capability.poi_search,
                 Capability.reverse_geocode,
+                Capability.map_tile,
             }
         ),
         auth="api_key",
@@ -162,6 +165,47 @@ class TiandituProvider(BaseProvider):
     async def reverse_geocode_gcj02(self, lng: float, lat: float) -> dict:
         cgcs_lng, cgcs_lat = gcj02_to_cgcs2000(lng, lat)
         return await self.reverse_geocode(cgcs_lng, cgcs_lat)
+
+    async def fetch_tile(self, layer: str, z: int, x: int, y: int) -> dict:
+        if layer not in TILE_LAYERS:
+            raise ProviderUnavailable(f"不支持的天地图图层：{layer}")
+        if not self.configured:
+            raise ProviderAuthError("未配置 TIANDITU_API_KEY")
+        subdomain = (int(x) + int(y)) % 8
+        params = {
+            "SERVICE": "WMTS",
+            "REQUEST": "GetTile",
+            "VERSION": "1.0.0",
+            "LAYER": layer,
+            "STYLE": "default",
+            "TILEMATRIXSET": "w",
+            "FORMAT": "tiles",
+            "TILECOL": str(int(x)),
+            "TILEROW": str(int(y)),
+            "TILEMATRIX": str(int(z)),
+            "tk": settings.tianditu_api_key,
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=20.0,
+                follow_redirects=True,
+                proxy=settings.tianditu_proxy or None,
+            ) as client:
+                response = await client.get(
+                    TILE_URL.format(s=subdomain, layer=layer), params=params
+                )
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailable(f"天地图瓦片请求失败：{type(exc).__name__}") from exc
+        if response.status_code in (401, 403):
+            raise ProviderAuthError("天地图拒绝瓦片请求：Key/IP 白名单不匹配")
+        if response.status_code >= 400:
+            raise ProviderUnavailable(f"天地图瓦片 HTTP {response.status_code}")
+        content_type = (response.headers.get("content-type") or "").split(";")[0]
+        if not content_type.startswith("image/"):
+            raise ProviderUnavailable(f"天地图瓦片返回非图片：{content_type or 'unknown'}")
+        if len(response.content) < 64:
+            raise ProviderUnavailable("天地图瓦片为空")
+        return {"content": response.content, "content_type": content_type}
 
     async def test(self) -> ProviderTestResult:
         started = time.monotonic()

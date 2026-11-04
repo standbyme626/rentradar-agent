@@ -546,6 +546,25 @@ async def enqueue_geocode(db: AsyncSession, community_ids: list[int]) -> dict | 
     return _job_out(job, len(community_ids) * 5 or None)
 
 
+async def enqueue_image_analysis(
+    db: AsyncSession, listing_ids: list[int], limit: int = 30
+) -> dict | None:
+    task = await _task_for_job(db)
+    if task is None:
+        return None
+    limit = max(1, min(int(limit), 200))
+    job = Job(
+        task_id=task.id,
+        type="image_analysis",
+        payload={"listing_ids": listing_ids[:limit], "limit": limit},
+        status=JobStatus.queued,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    return _job_out(job, len(listing_ids) or limit)
+
+
 async def run_task_now(db: AsyncSession, task_id: int) -> int | None:
     return await task_service.run_task_now(db, task_id)
 

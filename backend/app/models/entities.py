@@ -97,6 +97,9 @@ class Community(Base):
 
     city: Mapped[City] = relationship(back_populates="communities")
     listings: Mapped[list["Listing"]] = relationship(back_populates="community")
+    reputation_mentions: Mapped[list["ReputationMention"]] = relationship(
+        back_populates="community", cascade="all, delete-orphan"
+    )
 
 
 class Task(Base):
@@ -215,6 +218,12 @@ class Listing(Base):
     )
     watchlist_entries: Mapped[list["Watchlist"]] = relationship(
         back_populates="listing", cascade="all, delete-orphan"
+    )
+    images: Mapped[list["ListingImage"]] = relationship(
+        back_populates="listing", cascade="all, delete-orphan"
+    )
+    image_analysis: Mapped["ListingImageAnalysis | None"] = relationship(
+        back_populates="listing", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -482,6 +491,9 @@ class AgentSession(Base):
     tools_list: Mapped[list] = mapped_column(
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
+    guardrails: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     result: Mapped[str | None] = mapped_column(Text)
     label: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(
@@ -542,3 +554,191 @@ class AgentMonitorMatch(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ListingImage(Base):
+    __tablename__ = "listing_images"
+    __table_args__ = (
+        UniqueConstraint("listing_id", "kind", "url", name="uq_listing_image"),
+        Index("listing_images_phash_bucket_idx", "phash_bucket"),
+        Index("listing_images_listing_idx", "listing_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    listing_id: Mapped[int] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16), default="cover", server_default="cover")
+    url: Mapped[str] = mapped_column(String(512))
+    local_path: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(64))
+    bytes: Mapped[int | None] = mapped_column(Integer)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    brightness: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    phash: Mapped[str | None] = mapped_column(String(16))
+    phash_bucket: Mapped[str | None] = mapped_column(String(4))
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    error: Mapped[str | None] = mapped_column(Text)
+    downloaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    listing: Mapped[Listing] = relationship(back_populates="images")
+
+
+class ListingImageAnalysis(Base):
+    __tablename__ = "listing_image_analysis"
+
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
+    )
+    signals: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    verdict: Mapped[str] = mapped_column(
+        String(16), default="unknown", server_default="unknown"
+    )
+    confidence: Mapped[float | None] = mapped_column(Numeric(4, 2))
+    quality: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    needs_vision: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true")
+    )
+    analyzed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    listing: Mapped[Listing] = relationship(back_populates="image_analysis")
+
+
+class ReputationMention(Base):
+    __tablename__ = "reputation_mentions"
+    __table_args__ = (
+        Index("reputation_mentions_community_idx", "community_id", "created_at"),
+        Index("reputation_mentions_status_idx", "match_status", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    community_id: Mapped[int] = mapped_column(ForeignKey("communities.id", ondelete="CASCADE"))
+    source: Mapped[str] = mapped_column(String(32))
+    url: Mapped[str | None] = mapped_column(String(512))
+    title: Mapped[str | None] = mapped_column(String(255))
+    excerpt: Mapped[str] = mapped_column(Text)
+    issue_type: Mapped[str | None] = mapped_column(String(32))
+    severity: Mapped[str] = mapped_column(String(16), default="low", server_default="low")
+    confidence: Mapped[float] = mapped_column(Numeric(4, 2), default=0.5, server_default="0.5")
+    match_status: Mapped[str] = mapped_column(
+        String(16), default="verified", server_default="verified"
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    evidence: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    community: Mapped[Community] = relationship(back_populates="reputation_mentions")
+
+
+class AgentToolCall(Base):
+    __tablename__ = "agent_tool_calls"
+    __table_args__ = (Index("agent_tool_calls_session_idx", "session_id", "step"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_sessions.id", ondelete="CASCADE")
+    )
+    step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    tool: Mapped[str] = mapped_column(String(32))
+    args: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    result_summary: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    result: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AgentEvalRun(Base):
+    __tablename__ = "agent_eval_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_version: Mapped[str] = mapped_column(String(32))
+    mode: Mapped[str] = mapped_column(String(16), default="rules", server_default="rules")
+    total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    passed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    metrics: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    cases: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ShareLink(Base):
+    """Revocable read-only dashboard link (P2/W8)."""
+
+    __tablename__ = "share_links"
+    __table_args__ = (Index("share_links_token_idx", "token_hash"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    token_prefix: Mapped[str] = mapped_column(String(12), default="")
+    label: Mapped[str] = mapped_column(String(64), default="只读看板")
+    scope: Mapped[str] = mapped_column(String(32), default="dashboard", server_default="dashboard")
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class ReferenceRent(Base):
+    """Official / semi-official rent reference used by the price score (P3)."""
+
+    __tablename__ = "reference_rents"
+    __table_args__ = (
+        UniqueConstraint(
+            "city_id",
+            "community_id",
+            "layout",
+            "reference_month",
+            "source",
+            name="uq_reference_rent_scope",
+        ),
+        Index("reference_rents_lookup_idx", "city_id", "community_id", "layout"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="CASCADE"))
+    community_id: Mapped[int | None] = mapped_column(
+        ForeignKey("communities.id", ondelete="SET NULL")
+    )
+    community_name: Mapped[str | None] = mapped_column(String(128))
+    district: Mapped[str | None] = mapped_column(String(64))
+    layout: Mapped[str] = mapped_column(String(32), default="")
+    monthly_rent: Mapped[int] = mapped_column(Integer)
+    reference_month: Mapped[str] = mapped_column(String(7))
+    source: Mapped[str] = mapped_column(String(32), default="manual")
+    url: Mapped[str | None] = mapped_column(String(512))
+    confidence: Mapped[float] = mapped_column(Numeric(4, 2), default=0.8, server_default="0.8")
+    raw: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

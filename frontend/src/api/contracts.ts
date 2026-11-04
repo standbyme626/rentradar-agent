@@ -1,4 +1,24 @@
-import type { AgentSession, Candidate, Community, Listing, Run, Stats, Task } from './types'
+import type {
+  AgentCostData,
+  AgentEvalData,
+  AgentEvalRun,
+  AgentSession,
+  Candidate,
+  CityInfo,
+  Community,
+  ImagesData,
+  Listing,
+  OpsStatus,
+  ReferenceRent,
+  ReputationMention,
+  ReputationOverview,
+  ReputationSummary,
+  Run,
+  ShareLink,
+  SourceInfo,
+  Stats,
+  Task,
+} from './types'
 
 export type PlanStatus = 'done' | 'now' | 'pending' | 'failed'
 
@@ -155,6 +175,13 @@ export interface AdminSettings {
   quiet: boolean
   pauseAlert: boolean
   monitorPush: boolean
+  alertPush: boolean
+  alertQueueBacklog: number
+  alertQueuedMinutes: number
+  alertDiskPct: number
+  alertBackupHours: number
+  alertCooldownMinutes: number
+  alertIntervalMinutes: number
 }
 
 export interface AuthUser {
@@ -184,7 +211,7 @@ export interface AuditLogEntry {
 
 export interface Job {
   id: string
-  type: 'analysis' | 'sampling' | 'geocode' | 'task'
+  type: 'analysis' | 'sampling' | 'geocode' | 'task' | 'image_analysis'
   status: 'queued' | 'running' | 'done' | 'failed'
   calls?: number
   createdAt: string
@@ -248,6 +275,57 @@ export interface AdminService {
   enqueueGeocode(communityIds: number[]): Promise<Job>
   annotateSession(sessionId: string, label: string): Promise<void>
   auditLogs(limit?: number): Promise<AuditLogEntry[]>
+  images(): Promise<ImagesData>
+  analyzeImages(listingIds: number[], limit?: number): Promise<Job>
+  reputation(): Promise<ReputationOverview>
+  reputationCommunities(q: string): Promise<Array<{ id: number; name: string; district: string | null }>>
+  reputationCommunity(id: number): Promise<{
+    community: { id: number; name: string; district: string | null }
+    summary: ReputationSummary
+    mentions: ReputationMention[]
+  }>
+  createReputationMention(payload: ReputationMentionInput): Promise<ReputationMention>
+  updateReputationMention(id: number, matchStatus: string): Promise<ReputationMention>
+  deleteReputationMention(id: number): Promise<void>
+  extractReputation(communityId: number, text: string): Promise<{ drafts: ReputationDraft[]; note: string }>
+  agentEval(): Promise<AgentEvalData>
+  runAgentEval(): Promise<AgentEvalRun>
+  agentCost(days?: number): Promise<AgentCostData>
+  opsStatus(): Promise<OpsStatus>
+  runOpsCheck(force?: boolean): Promise<Record<string, unknown>>
+  shareLinks(): Promise<ShareLink[]>
+  createShareLink(label: string, expiresDays: number): Promise<ShareLink>
+  revokeShareLink(id: number): Promise<ShareLink>
+  sources(): Promise<SourceInfo[]>
+  updateSource(code: string, enabled: boolean): Promise<SourceInfo>
+  cities(): Promise<CityInfo[]>
+  updateCity(code: string, enabled: boolean): Promise<CityInfo>
+  createTask(payload: Record<string, unknown>): Promise<Task>
+  updateTask(id: number, payload: Record<string, unknown>): Promise<Task>
+  disableTask(id: number): Promise<Task>
+  referenceRents(city?: string): Promise<ReferenceRent[]>
+  importReferenceRents(city: string, rows: Array<Record<string, unknown>>): Promise<Record<string, number>>
+  deleteReferenceRent(id: number): Promise<{ ok: boolean }>
+}
+
+export interface ReputationMentionInput {
+  communityId: number
+  source: string
+  url?: string | null
+  title?: string | null
+  excerpt: string
+  issueType?: string | null
+  severity: 'low' | 'medium' | 'high'
+  confidence: number
+  matchStatus: 'verified' | 'uncertain' | 'rejected'
+  publishedAt?: string | null
+}
+
+export interface ReputationDraft {
+  excerpt: string
+  issue_type: string
+  severity: 'low' | 'medium' | 'high'
+  confidence: number
 }
 
 export type ProviderDomain =

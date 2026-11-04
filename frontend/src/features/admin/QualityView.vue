@@ -45,7 +45,7 @@ async function enqueueGeocode(item: Community) {
     <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
       <AdminKpi label="缺坐标小区" :value="noGeo" :sub="`影响 ${stats.listings_no_geo} 套房源通勤`" tone="coral" />
       <AdminKpi label="POI 封顶小区" :value="stats.poi_capped" sub="餐饮 count ≥ 600" tone="amber" />
-      <AdminKpi label="详情图覆盖" value="0 / 900" sub="AI 无法运行" tone="coral" />
+      <AdminKpi label="详情图覆盖" value="不可用" sub="列表只有封面；分析见图片页" tone="amber" />
     </div>
 
     <div class="mt-4 grid gap-4 xl:grid-cols-2">

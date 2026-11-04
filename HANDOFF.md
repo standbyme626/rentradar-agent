@@ -206,3 +206,33 @@ curl -sN -X POST http://192.168.31.197:8010/api/agent/messages/stream \
 - 监控：测试监控扫描 2 天事件 711 条 pending，静默时未发送
 - 管理端设置 PUT 后写入 `app_settings.admin_settings`
 - 最近慢扫：30 页 / 900 条 / 新增 148 / 去重 180 / `suspect_skipped=true`
+
+
+---
+
+## 2026-11-04 · P1 补记（Agent 工具运行时 / 封面 / 口碑 / 地图）
+
+- **迁移**：head `b2c3d4e5f6a7`，新增 `agent_tool_calls`、`listing_images`、`listing_image_analysis`、`reputation_mentions`、`agent_eval_runs`，`agent_sessions.guardrails`。
+- **Agent**：`agent_tools.py` 白名单 5 个只读工具 + `save_monitor` 写工具（仅显式“保存/监控”路径）；`llm_service.plan_tools` 严格 JSON 计划，失败回退 `rule_plan`；`guardrails.py` 预算硬停/PII/注入；每次调用落 trace；`agent_eval_service.py` 60 条黄金集（48 查询 + 12 护栏），`POST /api/admin/agent/eval/run` 零外部调用。
+- **图片**：`image_service.py` 下载贝壳列表封面到 `APP_IMAGE_CACHE_DIR`，dHash + 重复/低价/话术信号，≥2 信号才可疑；`image_analysis` job；管理端“图片 / AI”读真实队列与重复组。视觉模型未授权，标签标记“待视觉”。
+- **口碑**：`reputation_service.py` + 管理端“口碑证据”页；人工录入/抽取草稿/确认/排除；评分第 5 项改为真实聚合，无证据显示“数据不足（中性分）”。抽取调用 ModelScope 文本模型，默认草稿 uncertain。
+- **地图**：`map_service.py` 输出 WGS-84 小区坐标/中位租金/评分/通勤 p50；Tianditu `fetch_tile` + 服务端磁盘缓存；前端 `MapPanel.vue` 自研墨卡托瓦片渲染 + marker/筛选/详情入口；无 Key 时降级坐标网格。调研见 `docs/TIANDITU-MAP.md`。
+- **验证**：`pytest -q` 119 passed；`ruff check app tests` 全绿；`npm run build` 通过。UI 证据同样使用本地 mock API（agent 无生产库权限），见 `docs/evidence/p1-ui/`。
+- **仍需真实环境验证**：天地图瓦片需要有效 Key + 10943 出口；真实 rescore 需在生产库跑 `rescore` 才会把新口碑分写入 `score_reasons`；图片下载依赖贝壳 CDN 可达。
+
+
+---
+
+## 2026-11-04 · P2/P3 补记（CI / 告警 / 分享 / 多城市多源 / 参考租金 / OpenCode Go）
+
+- **迁移**：head `d4e5f6a7b8c9`（`share_links`、`reference_rents`、manual/ziroom source、sz/sh city 兜底、listings 去重索引）。
+- **模型**：新 Provider `opencode_go_deepseek`（OpenCode Go · DeepSeek V4.1 Flash，priority 5）。`.env` 需 `OPENCODE_GO_API_KEY`；`OPENCODE_GO_MODEL` 默认 `deepseek-v4.1-flash`。网关必须带真实 UA + `x-opencode-session`。ModelScope 保留为兜底；`aiDailyCap` 对所有 AI Provider 生效。
+- **Agent 原生工具**：`APP_AGENT_NATIVE_TOOLS=false` 默认关闭；开启先走 tool_calls，失败回退严格 JSON/规则。真实 spike 已通过。
+- **运维页** `/admin/ops`：队列/失败/磁盘/备份/Provider 告警、只读分享 token、来源/城市开关、参考租金导入。告警由 scheduler 每 10 分钟入队 `alert_check`，飞书推送有冷却与恢复通知。
+- **备份**：`backup.sh` 写 `last_backup.json`（ok/failed）；`restore-drill.sh` 恢复临时库并输出计数。agent 环境没有 Docker/psql，未实际执行。
+- **分享**：`/share/<token>`；token 只存 SHA-256，可撤销/过期；公开 API 限流 + noindex；只发聚合。公网前按 `docs/OPS.md` 加 TLS/反代/限流。
+- **多源**：`manual` JSON/CSV 源默认停用；`ziroom` 公开列表 API 已接入（默认停用）；跨源同房源按小区/户型/租金/面积去重。
+- **参考租金**：`reference_rents` + `import-reference-rents`；评分价格项优先参考价。无住建局 API，人工导入。
+- **视觉标签**：`APP_IMAGE_VISION_ENABLED=true` 时调用 OpenCode Go 视觉模型，标签写入 `quality.vision`，失败只标“待视觉”；默认关闭。
+- **CI**：`.github/workflows/ci.yml`；本地等价：`ruff check app tests`、`pytest -q`、`npm run build`、`alembic upgrade head`。
+- **验证**：154 passed；ruff/前端构建通过；迁移离线 SQL 通过。生产迁移、备份恢复、覆盖率/通勤/价格点、外卖样本、天地图 Key、视觉标签的**批量**运行仍未验证（单张封面真实调用已通过）。

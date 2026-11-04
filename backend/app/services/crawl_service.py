@@ -2,6 +2,7 @@ import hashlib
 import json
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,14 +20,15 @@ from app.models import (
     Source,
     Task,
 )
-from app.services import provider_runtime
+from app.services import dedupe_service, provider_runtime
 from app.services.notify_service import notify_events, send_text
 from app.services.score_service import score_listing
 from app.services.settings_service import get_admin_settings
-from app.sources import beike_api
-from app.sources.base import CaptchaRequiredError
+from app.sources import beike_api, manual
+from app.sources.base import CaptchaRequiredError, EmptyPageError
 from app.sources.beike import build_list_url, parse_list
 from app.sources.cdp import CDPPageFetcher
+from app.sources.ziroom import ZiroomFetcher
 
 log = get_logger("crawl")
 
@@ -88,6 +90,140 @@ def _apply_draft(listing: Listing, draft, community: Community | None) -> None:
     listing.raw_hash = _raw_hash(draft.raw)
 
 
+async def _ingest_draft(
+    db: AsyncSession,
+    *,
+    city: City,
+    source: Source,
+    task: Task,
+    draft,
+    now: datetime,
+    baseline: bool,
+    stats: dict,
+    event_ids: list[int],
+    seen_ids: set[int],
+    seen_drafts: set[str],
+) -> None:
+    """Insert or update one listing, with cross-source de-duplication."""
+    if draft.source_listing_id in seen_drafts:
+        stats["duplicates"] += 1
+        return
+    seen_drafts.add(draft.source_listing_id)
+    community = await _get_or_create_community(
+        db,
+        city.id,
+        draft.community_name,
+        draft.district,
+        lng=draft.raw.get("lng"),
+        lat=draft.raw.get("lat"),
+    )
+    listing = await db.scalar(
+        select(Listing).where(
+            Listing.source_id == source.id,
+            Listing.source_listing_id == draft.source_listing_id,
+        )
+    )
+    if listing is None:
+        duplicate = await dedupe_service.find_duplicate(
+            db, city.id, draft, source.id
+        )
+        if duplicate is not None:
+            aliases = list((duplicate.raw or {}).get("cross_source") or [])
+            aliases.append(
+                {
+                    "source": source.code,
+                    "source_listing_id": draft.source_listing_id,
+                    "url": draft.url,
+                }
+            )
+            duplicate.raw = {**(duplicate.raw or {}), "cross_source": aliases[-10:]}
+            duplicate.cluster_id = duplicate.cluster_id or duplicate.id
+            duplicate.last_seen_at = now
+            if duplicate.community_id is None and community is not None:
+                duplicate.community_id = community.id
+            stats["cross_source_duplicates"] = (
+                int(stats.get("cross_source_duplicates") or 0) + 1
+            )
+            seen_ids.add(duplicate.id)
+            return
+        listing = Listing(
+            source_id=source.id,
+            city_id=city.id,
+            community_id=community.id if community else None,
+            source_listing_id=draft.source_listing_id,
+            url=draft.url,
+            title=draft.title,
+            community_name=draft.community_name,
+            district=draft.district,
+            layout=draft.layout,
+            area=draft.area,
+            orientation=draft.orientation,
+            floor=draft.floor,
+            rent=draft.rent,
+            tags=draft.tags,
+            image_url=draft.image_url,
+            agent_type=draft.agent_type,
+            raw=draft.raw,
+            raw_hash=_raw_hash(draft.raw),
+            status=ListingStatus.active,
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        db.add(listing)
+        await db.flush()
+        if draft.rent is not None:
+            db.add(Snapshot(listing_id=listing.id, rent=draft.rent, seen_at=now))
+        event = Event(
+            listing_id=listing.id,
+            type=EventType.new,
+            payload={"rent": draft.rent, "source": source.code, "baseline": baseline},
+            notified=baseline,
+        )
+        db.add(event)
+        await db.flush()
+        event_ids.append(event.id)
+        stats["new"] += 1
+    else:
+        old_rent = listing.rent
+        was_missing = listing.status in (ListingStatus.gone, ListingStatus.suspect)
+        _apply_draft(listing, draft, community)
+        listing.last_seen_at = now
+        if was_missing:
+            listing.status = ListingStatus.active
+            listing.miss_count = 0
+            event = Event(
+                listing_id=listing.id,
+                type=EventType.relisted,
+                payload={"rent": draft.rent},
+            )
+            db.add(event)
+            await db.flush()
+            event_ids.append(event.id)
+        if old_rent is not None and draft.rent is not None and old_rent != draft.rent:
+            db.add(Snapshot(listing_id=listing.id, rent=draft.rent, seen_at=now))
+            event = Event(
+                listing_id=listing.id,
+                type=EventType.price_drop
+                if draft.rent < old_rent
+                else EventType.price_up,
+                payload={"old": old_rent, "new": draft.rent},
+            )
+            db.add(event)
+            await db.flush()
+            event_ids.append(event.id)
+            stats["price_changes"] += 1
+        stats["updated"] += 1
+
+    scored = await score_listing(db, listing, task.filters or {})
+    if scored is None:
+        listing.score = None
+        listing.score_reasons = {"filter": "未通过硬过滤"}
+    else:
+        listing.score, listing.score_reasons = scored
+        stats["scored"] += 1
+    seen_ids.add(listing.id)
+
+
 async def run_task(
     db: AsyncSession,
     task: Task,
@@ -104,8 +240,10 @@ async def run_task(
     source = await db.get(Source, task.source_id)
     if city is None or source is None:
         raise ValueError("task city or source missing")
-    if source.code != "beike":
+    if source.code not in {"beike", "ziroom", "manual"}:
         raise ValueError(f"source {source.code} is not implemented yet")
+    if not source.enabled:
+        raise ValueError(f"source {source.code} is disabled")
 
     filters = task.filters or {}
     transport = (transport or str(filters.get("transport") or "cdp")).lower()
@@ -113,7 +251,10 @@ async def run_task(
         raise ValueError(f"unsupported transport: {transport}")
     if transport == "api" and district and not line:
         raise ValueError("api transport needs a line; district-only is not supported")
-    await provider_runtime.ensure_enabled(db, "beike_api" if transport == "api" else "beike_cdp")
+    if source.code == "beike":
+        await provider_runtime.ensure_enabled(
+            db, "beike_api" if transport == "api" else "beike_cdp"
+        )
 
     run = Run(task_id=task.id, status="running")
     db.add(run)
@@ -148,10 +289,122 @@ async def run_task(
         "duplicates": 0,
         "total": None,
         "transport": transport,
+        "cross_source_duplicates": 0,
     }
     event_ids: list[int] = []
     seen_ids: set[int] = set()
     seen_drafts: set[str] = set()
+    if source.code == "manual":
+        try:
+            feed_path = str(filters.get("feed_path") or "").strip()
+            if not feed_path:
+                raise ValueError("manual source needs filters.feed_path")
+            drafts, feed_errors = manual.load_feed(feed_path)
+            stats.update(
+                {
+                    "pages": 1,
+                    "scope": f"manual:{Path(feed_path).name}",
+                    "feed_rows": len(drafts),
+                    "feed_errors": feed_errors[:20],
+                    "transport": "manual",
+                }
+            )
+            now = datetime.now(UTC)
+            for draft in drafts:
+                city_hint = str(draft.raw.get("city") or "").strip().lower()
+                if city_hint and city_hint not in {city.code.lower(), city.name.lower()}:
+                    stats["feed_skipped_other_city"] = (
+                        int(stats.get("feed_skipped_other_city") or 0) + 1
+                    )
+                    continue
+                draft.raw["scope"] = f"manual:{Path(feed_path).name}"
+                await _ingest_draft(
+                    db,
+                    city=city,
+                    source=source,
+                    task=task,
+                    draft=draft,
+                    now=now,
+                    baseline=baseline,
+                    stats=stats,
+                    event_ids=event_ids,
+                    seen_ids=seen_ids,
+                    seen_drafts=seen_drafts,
+                )
+            await db.commit()
+            run = await db.get(Run, run.id)
+            run.status = "done"
+            run.finished_at = datetime.now(UTC)
+            run.stats = stats
+            await db.commit()
+            notify_result = await notify_events(db, event_ids) if notify else None
+            return {"run_id": run.id, **stats, "notify": notify_result}
+        except Exception as exc:
+            await db.rollback()
+            run = await db.get(Run, run.id)
+            if run is not None:
+                run.status = "failed"
+                run.error = str(exc)[:1000]
+                run.finished_at = datetime.now(UTC)
+                run.stats = stats
+            await db.commit()
+            raise
+    if source.code == "ziroom":
+        try:
+            fetcher = ZiroomFetcher(city.code)
+            try:
+                stats["transport"] = "ziroom"
+                stats["scope"] = "ziroom:all"
+                for page in range(1, max(1, pages) + 1):
+                    try:
+                        ziroom_drafts = await fetcher.fetch_page(page)
+                    except EmptyPageError:
+                        break
+                    stats["pages"] += 1
+                    stats["fetched"] += len(ziroom_drafts)
+                    now = datetime.now(UTC)
+                    for draft in ziroom_drafts:
+                        draft.raw["scope"] = "ziroom:all"
+                        await _ingest_draft(
+                            db,
+                            city=city,
+                            source=source,
+                            task=task,
+                            draft=draft,
+                            now=now,
+                            baseline=baseline,
+                            stats=stats,
+                            event_ids=event_ids,
+                            seen_ids=seen_ids,
+                            seen_drafts=seen_drafts,
+                        )
+                    await db.commit()
+                    log.info(
+                        "ziroom_page_done",
+                        page=page,
+                        fetched=stats["fetched"],
+                        new=stats["new"],
+                    )
+            finally:
+                await fetcher.close()
+            run = await db.get(Run, run.id)
+            run.status = "done"
+            run.finished_at = datetime.now(UTC)
+            run.stats = stats
+            await db.commit()
+            notify_result = await notify_events(db, event_ids) if notify else None
+            return {"run_id": run.id, **stats, "notify": notify_result}
+        except Exception as exc:
+            await db.rollback()
+            run = await db.get(Run, run.id)
+            if run is not None:
+                run.status = "failed"
+                run.error = str(exc)[:1000]
+                run.finished_at = datetime.now(UTC)
+                run.stats = stats
+            await db.commit()
+            raise
+
     page_size = beike_api.MAX_LIMIT
     if transport == "api":
         page_size = max(1, min(int(filters.get("page_size") or page_size), page_size))
@@ -223,101 +476,19 @@ async def run_task(
             now = datetime.now(UTC)
 
             for draft in drafts:
-                if draft.source_listing_id in seen_drafts:
-                    stats["duplicates"] += 1
-                    continue
-                seen_drafts.add(draft.source_listing_id)
-                community = await _get_or_create_community(
+                await _ingest_draft(
                     db,
-                    city.id,
-                    draft.community_name,
-                    draft.district,
-                    lng=draft.raw.get("lng"),
-                    lat=draft.raw.get("lat"),
+                    city=city,
+                    source=source,
+                    task=task,
+                    draft=draft,
+                    now=now,
+                    baseline=baseline,
+                    stats=stats,
+                    event_ids=event_ids,
+                    seen_ids=seen_ids,
+                    seen_drafts=seen_drafts,
                 )
-                listing = await db.scalar(
-                    select(Listing).where(
-                        Listing.source_id == source.id,
-                        Listing.source_listing_id == draft.source_listing_id,
-                    )
-                )
-                if listing is None:
-                    listing = Listing(
-                        source_id=source.id,
-                        city_id=city.id,
-                        community_id=community.id if community else None,
-                        source_listing_id=draft.source_listing_id,
-                        url=draft.url,
-                        title=draft.title,
-                        community_name=draft.community_name,
-                        district=draft.district,
-                        layout=draft.layout,
-                        area=draft.area,
-                        orientation=draft.orientation,
-                        floor=draft.floor,
-                        rent=draft.rent,
-                        tags=draft.tags,
-                        image_url=draft.image_url,
-                        agent_type=draft.agent_type,
-                        raw=draft.raw,
-                        raw_hash=_raw_hash(draft.raw),
-                        status=ListingStatus.active,
-                        first_seen_at=now,
-                        last_seen_at=now,
-                    )
-                    db.add(listing)
-                    await db.flush()
-                    if draft.rent is not None:
-                        db.add(Snapshot(listing_id=listing.id, rent=draft.rent, seen_at=now))
-                    event = Event(
-                        listing_id=listing.id,
-                        type=EventType.new,
-                        payload={"rent": draft.rent, "source": source.code, "baseline": baseline},
-                        notified=baseline,
-                    )
-                    db.add(event)
-                    await db.flush()
-                    event_ids.append(event.id)
-                    stats["new"] += 1
-                else:
-                    old_rent = listing.rent
-                    was_missing = listing.status in (ListingStatus.gone, ListingStatus.suspect)
-                    _apply_draft(listing, draft, community)
-                    listing.last_seen_at = now
-                    if was_missing:
-                        listing.status = ListingStatus.active
-                        listing.miss_count = 0
-                        event = Event(
-                            listing_id=listing.id,
-                            type=EventType.relisted,
-                            payload={"rent": draft.rent},
-                        )
-                        db.add(event)
-                        await db.flush()
-                        event_ids.append(event.id)
-                    if old_rent is not None and draft.rent is not None and old_rent != draft.rent:
-                        db.add(Snapshot(listing_id=listing.id, rent=draft.rent, seen_at=now))
-                        event = Event(
-                            listing_id=listing.id,
-                            type=EventType.price_drop
-                            if draft.rent < old_rent
-                            else EventType.price_up,
-                            payload={"old": old_rent, "new": draft.rent},
-                        )
-                        db.add(event)
-                        await db.flush()
-                        event_ids.append(event.id)
-                        stats["price_changes"] += 1
-                    stats["updated"] += 1
-
-                scored = await score_listing(db, listing, task.filters or {})
-                if scored is None:
-                    listing.score = None
-                    listing.score_reasons = {"filter": "未通过硬过滤"}
-                else:
-                    listing.score, listing.score_reasons = scored
-                    stats["scored"] += 1
-                seen_ids.add(listing.id)
 
             await db.commit()
             log.info(

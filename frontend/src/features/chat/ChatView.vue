@@ -108,7 +108,7 @@ const examples = [
 const tabs = computed(() => [
   { key: 'recs', label: '推荐', count: cards.value.length },
   { key: 'compare', label: '对比' },
-  { key: 'map', label: '地图', count: '即将' },
+  { key: 'map', label: '地图' },
 ])
 
 const conditionChips = computed(() => [

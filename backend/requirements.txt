@@ -10,3 +10,4 @@ python-dateutil>=2.9,<3
 httpx[socks]>=0.28,<1
 selectolax>=0.3.21,<1
 websockets>=14,<16
+pillow>=11,<13

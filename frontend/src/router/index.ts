@@ -7,6 +7,12 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
   routes: [
     {
+      path: '/share/:token',
+      name: 'share',
+      component: () => import('@/features/chat/ShareView.vue'),
+      meta: { title: '只读看板', public: true },
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/features/auth/LoginView.vue'),
@@ -49,6 +55,12 @@ const router = createRouter({
           meta: { title: '数据质量', crumb: '数据 / 数据质量' },
         },
         {
+          path: 'reputation',
+          name: 'admin-reputation',
+          component: () => import('@/features/admin/ReputationView.vue'),
+          meta: { title: '口碑证据', crumb: '数据 / 口碑证据' },
+        },
+        {
           path: 'providers',
           name: 'admin-providers',
           component: () => import('@/features/admin/ProvidersView.vue'),
@@ -65,6 +77,12 @@ const router = createRouter({
           name: 'admin-images',
           component: () => import('@/features/admin/ImagesView.vue'),
           meta: { title: '图片 / AI', crumb: '内容 / 图片与 AI' },
+        },
+        {
+          path: 'ops',
+          name: 'admin-ops',
+          component: () => import('@/features/admin/OpsView.vue'),
+          meta: { title: '运维', crumb: '运营 / 运维' },
         },
         {
           path: 'tasks',
@@ -91,6 +109,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (to.meta.public) return true
   const auth = useAuthStore()
   await auth.ensureLoaded()
   if (to.name === 'login') {
@@ -109,6 +128,17 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   document.title = `${(to.meta.title as string) ?? 'RentRadar'} · RentRadar`
+  let robots = document.querySelector('meta[name="robots"]')
+  if (to.meta.public) {
+    if (!robots) {
+      robots = document.createElement('meta')
+      robots.setAttribute('name', 'robots')
+      document.head.appendChild(robots)
+    }
+    robots.setAttribute('content', 'noindex, nofollow, noarchive')
+  } else if (robots) {
+    robots.remove()
+  }
 })
 
 export default router
