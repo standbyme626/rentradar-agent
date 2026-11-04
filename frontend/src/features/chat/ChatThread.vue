@@ -18,6 +18,10 @@ watch(
   },
 )
 
+function plainText(text?: string) {
+  return (text || '').replace(/\*\*/g, '').replace(/^#+\s*/gm, '').replace(/`/g, '')
+}
+
 function statusClass(status: PlanStatus) {
   if (status === 'done') return 'bg-forest text-white'
   if (status === 'now') return 'border border-forest text-forest'
@@ -45,7 +49,7 @@ function statusClass(status: PlanStatus) {
               v-if="message.kind === 'text'"
               class="rounded-2xl border border-line bg-paper px-3.5 py-2.5 text-[13px] leading-7 text-ink"
             >
-              {{ message.text }}<span v-if="message.streaming" class="ml-0.5 inline-block animate-pulse text-forest">▍</span>
+              {{ plainText(message.text) }}<span v-if="message.streaming" class="ml-0.5 inline-block animate-pulse text-forest">▍</span>
             </div>
 
             <div
