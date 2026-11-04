@@ -970,13 +970,33 @@ async def stream(
         }
         llm_answer = None
         if allow_llm:
-            llm_answer, answer_meta = await llm_service.answer(
-                db,
-                cards,
-                conditions,
-                tool_results=tool_results,
-                history=history_for_llm,
-            )
+            if settings.agent_stream_answer:
+                try:
+                    async for item in llm_service.stream_answer(
+                        db,
+                        cards,
+                        conditions,
+                        tool_results=tool_results,
+                        history=history_for_llm,
+                    ):
+                        if item.get("type") == "delta":
+                            yield item
+                        elif item.get("type") == "done":
+                            llm_answer = item.get("text") or None
+                            answer_meta = item.get("meta") or answer_meta
+                except Exception as exc:
+                    log.warning(
+                        "stream_answer_failed", error=f"{type(exc).__name__}: {exc}"[:200]
+                    )
+                    llm_answer = None
+            if not llm_answer:
+                llm_answer, answer_meta = await llm_service.answer(
+                    db,
+                    cards,
+                    conditions,
+                    tool_results=tool_results,
+                    history=history_for_llm,
+                )
         llm_meta = llm_service.merge_meta(parse_meta, plan_meta, answer_meta)
         answer = llm_answer or _answer_for(cards, conditions)
         history, history_summary = memory_service.compact(

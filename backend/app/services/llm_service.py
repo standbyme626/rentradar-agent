@@ -382,3 +382,87 @@ def merge_meta(*metas: dict) -> dict:
         if not meta.get("fallback", True):
             merged["fallback"] = False
     return merged
+
+
+async def stream_answer(
+    db: AsyncSession,
+    cards: list[dict],
+    conditions: dict,
+    tool_results: list[dict] | None = None,
+    history: list[dict] | None = None,
+):
+    """Yield {'type':'delta','text':...} then one {'type':'done',...}."""
+    compact = [
+        {
+            "community": card.get("community_name"),
+            "district": card.get("district"),
+            "layout": card.get("layout"),
+            "rent": card.get("rent"),
+            "commute_min": card.get("commute_min"),
+            "score": card.get("score"),
+            "tags": card.get("tags"),
+            "price_reason": (card.get("score_reasons") or {}).get("price"),
+        }
+        for card in cards
+    ]
+    system = (
+        "你是 RentRadar 的租房顾问。基于提供的本地库存卡片和工具结果写 2–4 句中文推荐，"
+        "不得编造卡片/工具结果之外的事实；价格、通勤、评分必须与数据一致。"
+        "如果卡片为空，直接建议用户放宽预算/通勤/户型。"
+        "如果工具 counts.commute_unknown>0 且卡片为空，说明价格/户型有候选但通勤样本缺失；"
+        "建议先补采样，不要编造通勤时长，也不要把缺失样本说成“按估算处理”。"
+        "卡片 commute_min 为 null 时只能说明通勤样本缺失，不能推断其满足通勤上限。"
+        "如果用户没有提出通勤上限，不要把缺失通勤当成主要结论，也不要说“无法确认是否满足通勤上限”；"
+        "可以最后一句简短提醒样本缺失。"
+        "如果用户在问此前对话/最初条件，直接根据历史对话回答，不要用本次卡片硬答，也不要改变当前条件。"
+        "不允许建议下单、转账或联系中介之外的写操作。"
+    )
+    payload = {
+        "conditions": conditions,
+        "cards": compact,
+        "history": _history_block(history),
+    }
+    if tool_results:
+        payload["tool_results"] = tool_results
+    user = json.dumps(payload, ensure_ascii=False)
+    started = time.monotonic()
+    chunks: list[str] = []
+    meta = _empty_meta("stream")
+    try:
+        async for event in provider_runtime.invoke_chat_stream(
+            db,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=900,
+            temperature=0.3,
+        ):
+            if event.get("type") == "delta":
+                text = str(event.get("text") or "")
+                if text:
+                    chunks.append(text)
+                    yield {"type": "delta", "text": text}
+            elif event.get("type") == "done":
+                latency = int((time.monotonic() - started) * 1000)
+                meta = {
+                    "model": event.get("model") or "",
+                    "prompt_tokens": int(event.get("prompt_tokens") or 0),
+                    "completion_tokens": int(event.get("completion_tokens") or 0),
+                    "cost": 0.0,
+                    "fallback": False,
+                    "error": None,
+                    "calls": [
+                        [
+                            "llm_stream",
+                            str(event.get("model") or ""),
+                            f"{latency}ms",
+                            f"{int(event.get('prompt_tokens') or 0)}+"
+                            f"{int(event.get('completion_tokens') or 0)} tok",
+                        ]
+                    ],
+                }
+    except Exception as exc:
+        meta = _empty_meta(f"{type(exc).__name__}: {exc}"[:200])
+    text = "".join(chunks).strip()
+    yield {"type": "done", "text": text, "meta": meta}

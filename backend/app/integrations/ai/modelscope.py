@@ -1,3 +1,4 @@
+import json
 import time
 from typing import Any
 
@@ -92,6 +93,80 @@ class ModelScopeProvider(BaseProvider):
             "prompt_tokens": int(usage.get("prompt_tokens") or 0),
             "completion_tokens": int(usage.get("completion_tokens") or 0),
             "raw": data,
+        }
+
+    async def stream_chat(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        max_tokens: int = 600,
+        temperature: float = 0.2,
+        model: str | None = None,
+    ):
+        if not self.configured:
+            raise ProviderAuthError("未配置 MODELSCOPE_API_KEY")
+        payload = {
+            "model": model or settings.modelscope_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.modelscope_api_key}",
+            "Content-Type": "application/json",
+        }
+        from app.integrations.ai.streaming import (
+            parse_openai_stream_chunk,
+            parse_openai_stream_usage,
+        )
+
+        prompt_tokens = completion_tokens = 0
+        response_model = str(payload["model"])
+        try:
+            async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                ) as response:
+                    if response.status_code in (401, 403):
+                        raise ProviderAuthError("魔搭 API Key 无效或未授权")
+                    if response.status_code == 429:
+                        raise ProviderRateLimitError("魔搭限流或免费额度不足")
+                    if response.status_code >= 400:
+                        body = (await response.aread()).decode(errors="ignore")
+                        raise ProviderUnavailable(
+                            f"魔搭 HTTP {response.status_code}: {body[:200]}"
+                        )
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(raw)
+                        except ValueError:
+                            continue
+                        text = parse_openai_stream_chunk(data)
+                        p_tokens, c_tokens, chunk_model = parse_openai_stream_usage(data)
+                        prompt_tokens = p_tokens or prompt_tokens
+                        completion_tokens = c_tokens or completion_tokens
+                        response_model = chunk_model or response_model
+                        if text:
+                            yield {"type": "delta", "text": text}
+        except (ProviderAuthError, ProviderRateLimitError, ProviderUnavailable):
+            raise
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailable(f"魔搭流式请求失败：{type(exc).__name__}") from exc
+        yield {
+            "type": "done",
+            "model": response_model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
         }
 
     async def test(self) -> ProviderTestResult:

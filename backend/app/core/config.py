@@ -75,6 +75,7 @@ class Settings(BaseSettings):
         validation_alias="OPENCODE_GO_MODEL",
     )
     agent_native_tools: bool = Field(False, validation_alias="APP_AGENT_NATIVE_TOOLS")
+    agent_stream_answer: bool = Field(True, validation_alias="APP_AGENT_STREAM_ANSWER")
     image_cache_dir: str = Field("data/images", validation_alias="APP_IMAGE_CACHE_DIR")
     image_max_bytes: int = Field(6_000_000, validation_alias="APP_IMAGE_MAX_BYTES")
     image_timeout_seconds: int = Field(15, validation_alias="APP_IMAGE_TIMEOUT_SECONDS")
