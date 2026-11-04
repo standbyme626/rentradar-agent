@@ -60,6 +60,7 @@ export const useChatStore = defineStore('chat', () => {
   let seq = 0
   let runId = 0
   let activePrompt = ''
+  let streamingMessageId: number | null = null
 
   const hasCards = computed(() => cards.value.length > 0)
   const amapLabel = computed(() => `${amapUsed.value} / ${amapMax.value}`)
@@ -112,6 +113,7 @@ export const useChatStore = defineStore('chat', () => {
 
   function reset() {
     runId += 1
+    streamingMessageId = null
     phase.value = 'landing'
     messages.value = []
     cards.value = []
@@ -154,9 +156,37 @@ export const useChatStore = defineStore('chat', () => {
         }
         break
       }
-      case 'message':
-        add({ role: 'agent', kind: 'text', text: event.text })
+      case 'delta': {
+        if (!event.text) break
+        if (streamingMessageId == null) {
+          seq += 1
+          streamingMessageId = seq
+          messages.value.push({
+            id: seq,
+            role: 'agent',
+            kind: 'text',
+            text: event.text,
+            streaming: true,
+          })
+        } else {
+          const streamed = messages.value.find((item) => item.id === streamingMessageId)
+          if (streamed) streamed.text = `${streamed.text || ''}${event.text}`
+        }
         break
+      }
+      case 'message': {
+        if (streamingMessageId != null) {
+          const streamed = messages.value.find((item) => item.id === streamingMessageId)
+          if (streamed) {
+            streamed.text = event.text
+            streamed.streaming = false
+          }
+          streamingMessageId = null
+        } else {
+          add({ role: 'agent', kind: 'text', text: event.text })
+        }
+        break
+      }
       case 'conditions':
         conditions.value = { ...event.conditions }
         break
@@ -178,6 +208,11 @@ export const useChatStore = defineStore('chat', () => {
         toast(event.message)
         break
       case 'done': {
+        if (streamingMessageId != null) {
+          const streamed = messages.value.find((item) => item.id === streamingMessageId)
+          if (streamed) streamed.streaming = false
+          streamingMessageId = null
+        }
         loading.value = false
         if (sessionId.value) {
           const session = history.value.find((item) => item.id === sessionId.value)

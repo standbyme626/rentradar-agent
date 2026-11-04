@@ -170,6 +170,83 @@ class OpenCodeGoProvider(BaseProvider):
             "raw": data,
         }
 
+    async def stream_chat(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        max_tokens: int = 600,
+        temperature: float = 0.2,
+        model: str | None = None,
+    ):
+        if not self.configured:
+            raise ProviderAuthError("未配置 OPENCODE_GO_API_KEY")
+        payload: dict[str, Any] = {
+            "model": model or self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        from app.integrations.ai.streaming import (
+            parse_openai_stream_chunk,
+            parse_openai_stream_usage,
+        )
+
+        prompt_tokens = completion_tokens = 0
+        response_model = str(payload["model"])
+        try:
+            async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self._headers(messages),
+                    json=payload,
+                ) as response:
+                    if response.status_code in (401, 403):
+                        raise ProviderAuthError(
+                            "OpenCode Go API Key 无效、未订阅，或客户端被网关拒绝"
+                        )
+                    if response.status_code == 429:
+                        raise ProviderRateLimitError(
+                            "OpenCode Go 限流或订阅额度不足"
+                        )
+                    if response.status_code >= 400:
+                        body = (await response.aread()).decode(errors="ignore")
+                        raise ProviderUnavailable(
+                            f"OpenCode Go HTTP {response.status_code}: {body[:200]}"
+                        )
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(raw)
+                        except ValueError:
+                            continue
+                        text = parse_openai_stream_chunk(data)
+                        p_tokens, c_tokens, chunk_model = parse_openai_stream_usage(data)
+                        prompt_tokens = p_tokens or prompt_tokens
+                        completion_tokens = c_tokens or completion_tokens
+                        response_model = chunk_model or response_model
+                        if text:
+                            yield {"type": "delta", "text": text}
+        except (ProviderAuthError, ProviderRateLimitError, ProviderUnavailable):
+            raise
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailable(
+                f"OpenCode Go 流式请求失败：{type(exc).__name__}"
+            ) from exc
+        yield {
+            "type": "done",
+            "model": response_model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+
     async def tag_image(
         self,
         image_url: str,

@@ -47,6 +47,7 @@ export type AgentEvent =
   | { type: 'plan'; steps: PlanStep[] }
   | { type: 'step'; id: string; status: PlanStatus; desc?: string }
   | { type: 'message'; text: string }
+  | { type: 'delta'; text: string }
   | { type: 'conditions'; conditions: Conditions }
   | { type: 'cards'; cards: Listing[]; longgang: boolean }
   | { type: 'budget'; amap: number; cap?: number }
@@ -62,6 +63,7 @@ export interface ChatMessage {
   kind: 'text' | 'plan' | 'ai'
   text?: string
   steps?: PlanStep[]
+  streaming?: boolean
 }
 
 export interface ChatSession {

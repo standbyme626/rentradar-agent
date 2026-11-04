@@ -432,3 +432,94 @@ async def invoke_chat(
     if last_error is not None:
         raise ProviderUnavailable(str(last_error)) from last_error
     raise ProviderUnavailable("没有可用的 chat Provider")
+
+
+async def invoke_chat_stream(
+    db: AsyncSession,
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    temperature: float,
+):
+    """Yield OpenAI-compatible text deltas, trying the next provider before the
+    first token if one fails. Once a delta has been emitted, the stream cannot
+    switch providers without duplicating text."""
+    admin_settings = await get_admin_settings(db)
+    settings_map = await _settings_map(db)
+    last_error: Exception | None = None
+    for provider in await _ordered_providers(db, Capability.chat):
+        if not hasattr(provider, "stream_chat"):
+            continue
+        try:
+            limit = await preflight(
+                db,
+                provider,
+                units=1,
+                cap_key="aiDailyCap",
+                admin_settings=admin_settings,
+                settings_map=settings_map,
+            )
+        except ProviderError as exc:
+            last_error = exc
+            continue
+        started = monotonic()
+        saw_delta = False
+        try:
+            async for event in provider.stream_chat(
+                messages, max_tokens=max_tokens, temperature=temperature
+            ):
+                if event.get("type") == "done":
+                    latency = int((monotonic() - started) * 1000)
+                    await record_call(
+                        provider,
+                        capability=Capability.chat.value,
+                        status="ok",
+                        latency_ms=latency,
+                        units=1,
+                        limit=limit,
+                        request_id=(
+                            f"tokens:{int(event.get('prompt_tokens') or 0)}/"
+                            f"{int(event.get('completion_tokens') or 0)}"
+                        ),
+                    )
+                    yield event
+                    return
+                saw_delta = True
+                yield event
+            # Some gateways close the stream without a [DONE] usage frame.
+            latency = int((monotonic() - started) * 1000)
+            await record_call(
+                provider,
+                capability=Capability.chat.value,
+                status="ok",
+                latency_ms=latency,
+                units=1,
+                limit=limit,
+            )
+            yield {
+                "type": "done",
+                "model": getattr(provider.meta, "code", ""),
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+            }
+            return
+        except Exception as exc:
+            latency = int((monotonic() - started) * 1000)
+            await record_call(
+                provider,
+                capability=Capability.chat.value,
+                status="error",
+                latency_ms=latency,
+                units=1,
+                error=f"{type(exc).__name__}: {exc}"[:500],
+                limit=limit,
+            )
+            last_error = exc
+            if saw_delta:
+                raise
+            continue
+    if isinstance(last_error, (ProviderQuotaExceeded, ProviderDisabled, ProviderCircuitOpen)):
+        raise last_error
+    if last_error is not None:
+        raise ProviderUnavailable(str(last_error)) from last_error
+    raise ProviderUnavailable("没有可用的流式 chat Provider")
