@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import AppSheet from '@/components/ui/AppSheet.vue'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean; company?: string }>()
 const emit = defineEmits<{ close: []; apply: [prompt: string] }>()
 
 const form = reactive({
@@ -15,6 +15,13 @@ const form = reactive({
 })
 
 const mustOptions = ['电梯', '南向', '精装', '可养宠', '近地铁']
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open && props.company) form.company = props.company
+  },
+)
 
 function toggleMust(value: string) {
   if (form.musts.includes(value)) form.musts = form.musts.filter((item) => item !== value)
