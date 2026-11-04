@@ -677,6 +677,7 @@ async def stream(
     session: AgentSession | None = None
     guard_log: list[dict] = []
     try:
+        yield {"type": "toast", "message": "正在理解需求…"}
         inspection = guardrails.inspect_message(message)
         guard_record = {
             "stage": "input",
@@ -912,6 +913,7 @@ async def stream(
                 plan_meta = llm_service.merge_meta(plan_meta, json_meta)
             if not steps:
                 steps = agent_tools.rule_plan(masked, conditions)
+            yield {"type": "toast", "message": "正在检索本地房源…"}
             cards, counts, conditions, trace, tool_results, tool_plan = (
                 await _execute_tools(db, session, steps, conditions, user_id=user_id)
             )
@@ -936,6 +938,7 @@ async def stream(
                 plan_meta = llm_service.merge_meta(plan_meta, json_meta)
             if not steps:
                 steps = agent_tools.rule_plan(masked, conditions)
+            yield {"type": "toast", "message": "正在检索本地房源…"}
             cards, counts, conditions, trace, tool_results, tool_plan = (
                 await _execute_tools(db, session, steps, conditions, user_id=user_id)
             )
