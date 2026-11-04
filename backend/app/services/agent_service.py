@@ -131,11 +131,22 @@ COMPANY_STOP_WORDS = (
     "小区",
     "房子",
 )
-COMPANY_GENERIC = {"公司", "单位", "工作", "上班", "地点", "位置", "还是", "会展中心"}
+COMPANY_GENERIC = {
+    "公司",
+    "单位",
+    "工作",
+    "上班",
+    "地点",
+    "位置",
+    "地址",
+    "公司地址",
+    "还是",
+    "会展中心",
+}
 
 
-def _extract_company(text: str) -> str | None:
-    """Extract an explicit office / commute destination from free text."""
+def _extract_company_match(text: str) -> tuple[str, int, int] | None:
+    """Return (value, start, end) for an explicit office / commute destination."""
     for pattern in COMPANY_PATTERNS:
         for match in pattern.finditer(text):
             value = match.group(1).strip()
@@ -146,8 +157,13 @@ def _extract_company(text: str) -> str | None:
             value = value.strip("，,。；;、 ")
             if len(value) < 2 or value in COMPANY_GENERIC:
                 continue
-            return value[:64]
+            return value[:64], match.start(), match.end()
     return None
+
+
+def _extract_company(text: str) -> str | None:
+    match = _extract_company_match(text)
+    return match[0] if match else None
 
 
 def _extract_must(text: str) -> list[str]:
@@ -175,7 +191,15 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
     budget = _extract_budget(message)
     commute = _extract_commute(message)
     layout = _extract_layout(message)
-    district = _extract_district(message)
+    # A company/office location is not a requested residential district:
+    # remove the company phrase before scanning for a district.
+    district_text = message
+    company_match = _extract_company_match(message)
+    if company_match:
+        district_text = (
+            message[: company_match[1]] + " " + message[company_match[2] :]
+        )
+    district = _extract_district(district_text)
     if budget is not None:
         conditions["budget"] = budget
     if commute is not None:
@@ -184,7 +208,7 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
         conditions["layout"] = layout
     if district is not None:
         conditions["district"] = district
-    company = _extract_company(message)
+    company = company_match[0] if company_match else None
     if company:
         conditions["company"] = company
         conditions["company_explicit"] = True
@@ -192,8 +216,10 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
         conditions["company"] = "深圳会展中心"
         conditions["company_explicit"] = True
     conditions["must"] = sorted(set(conditions["must"]) | set(_extract_must(message)))
-    conditions["isLong"] = conditions["district"] == "龙岗区" or bool(
-        conditions.get("budget") and conditions["budget"] <= 3000
+    conditions["isLong"] = (
+        conditions["district"] == "龙岗区"
+        or bool(conditions.get("budget") and conditions["budget"] <= 3000)
+        or bool(conditions.get("commute") and conditions["commute"] >= 60)
     )
     return conditions
 
@@ -290,7 +316,6 @@ def _answer_for(cards: list[dict], conditions: dict) -> str:
         return (
             f"没有找到同时满足「{conditions_summary(conditions)}」的房源。"
             "建议放宽预算、通勤或户型，或者去掉电梯/精装等硬条件。"
-            "本次只使用本地库存与缓存，未调用外部模型。"
         )
     lines = []
     for card in cards[:3]:
@@ -300,7 +325,7 @@ def _answer_for(cards: list[dict], conditions: dict) -> str:
             f"{card.get('community_name') or '房源'} · ¥{card.get('rent')} · "
             f"{commute_text} · {card.get('score')} 分"
         )
-    return "；".join(lines) + "。本次只使用本地库存与缓存，未调用外部模型。"
+    return "；".join(lines) + "。"
 
 
 def _monitor_name(conditions: dict) -> str:
@@ -311,20 +336,44 @@ def _session_amap_cap(settings: dict) -> int:
     return max(1, int(settings.get("sessionAmapCap") or 15))
 
 
-def _merge_llm_conditions(rule: dict, intent: dict | None) -> dict:
+def _merge_llm_conditions(
+    rule: dict, intent: dict | None, message: str | None = None
+) -> dict:
     if not intent:
         return rule
     merged = dict(rule)
+    company_match = _extract_company_match(message) if message is not None else None
     for key in ("budget", "commute", "layout", "district", "company"):
         value = intent.get(key)
-        if value is not None:
-            if key == "company" and value != merged.get("company"):
+        if value is None:
+            continue
+        if key == "company":
+            explicit = bool(company_match) or (
+                message is not None and "会展中心" in message
+            )
+            if message is not None and not (merged.get("company_explicit") or explicit):
+                # The LLM sometimes echoes the current destination back as a
+                # new company; do not let that silently change the setting.
+                continue
+            if value != merged.get("company"):
                 merged["company_explicit"] = True
-            merged[key] = value
+        if key == "district" and message is not None:
+            # A company address can contain a district name; only accept an
+            # LLM district when the user separately stated a residential area.
+            stripped = (
+                message[: company_match[1]] + " " + message[company_match[2] :]
+                if company_match
+                else message
+            )
+            if not merged.get("district") and _extract_district(stripped) is None:
+                continue
+        merged[key] = value
     if intent.get("must"):
         merged["must"] = sorted(set(merged.get("must") or []) | set(intent["must"]))
-    merged["isLong"] = merged.get("district") == "龙岗区" or bool(
-        merged.get("budget") and merged.get("budget") <= 3000
+    merged["isLong"] = (
+        merged.get("district") == "龙岗区"
+        or bool(merged.get("budget") and merged.get("budget") <= 3000)
+        or bool(merged.get("commute") and merged.get("commute") >= 60)
     )
     return merged
 
@@ -608,7 +657,7 @@ async def stream(
             intent = None
             if allow_llm:
                 intent, parse_meta = await llm_service.parse_intent(db, masked, {})
-            conditions = _merge_llm_conditions(rule, intent)
+            conditions = _merge_llm_conditions(rule, intent, masked)
             session = AgentSession(
                 id=f"S-{uuid.uuid4().hex[:8].upper()}",
                 user_id=user_id,
@@ -773,7 +822,7 @@ async def stream(
             intent = None
             if allow_llm:
                 intent, parse_meta = await llm_service.parse_intent(db, masked, base)
-            conditions = _merge_llm_conditions(rule, intent)
+            conditions = _merge_llm_conditions(rule, intent, masked)
             steps = None
             if allow_llm and settings.agent_native_tools:
                 steps, plan_meta = await llm_service.plan_tools_native(

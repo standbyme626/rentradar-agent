@@ -64,3 +64,27 @@ def test_merge_llm_conditions():
     assert merged["commute"] == 40
     assert "电梯" in merged["must"]
     assert merged["isLong"] is False
+
+
+def test_merge_ignores_hallucinated_company_and_district():
+    rule = parse_conditions("预算 4500，5 号线，通勤 40 分钟内")
+    merged = _merge_llm_conditions(
+        rule,
+        {"company": "南山科技园", "district": "南山区"},
+        "预算 4500，5 号线，通勤 40 分钟内",
+    )
+    assert merged["company"] == "深圳会展中心"
+    assert merged["company_explicit"] is False
+    assert merged["district"] is None
+
+
+def test_merge_keeps_explicit_company():
+    rule = parse_conditions("公司换到南山科技园，预算 4000")
+    merged = _merge_llm_conditions(
+        rule,
+        {"company": "南山科技园", "district": "南山区"},
+        "公司换到南山科技园，预算 4000",
+    )
+    assert merged["company"] == "南山科技园"
+    assert merged["company_explicit"] is True
+    assert merged["district"] is None
