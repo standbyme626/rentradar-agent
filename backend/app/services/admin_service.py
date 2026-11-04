@@ -407,11 +407,15 @@ async def crawl_coverage(db: AsyncSession, task_id: int | None = None) -> dict:
     scopes = [f"line:{item}" for item in conditions]
     counts: dict[str, int] = {}
     if scopes:
+        scope_expr = Listing.raw["scope"].astext
+        scope_rows = (
+            select(scope_expr.label("scope"))
+            .where(scope_expr.in_(scopes))
+            .subquery()
+        )
         rows = (
             await db.execute(
-                select(Listing.raw["scope"].astext, func.count())
-                .where(Listing.raw["scope"].astext.in_(scopes))
-                .group_by(Listing.raw["scope"].astext)
+                select(scope_rows.c.scope, func.count()).group_by(scope_rows.c.scope)
             )
         ).all()
         counts = {str(scope): int(count) for scope, count in rows}
