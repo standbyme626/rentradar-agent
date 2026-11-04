@@ -296,7 +296,7 @@ onBeforeUnmount(() => {
             />
             <circle
               v-for="station in line.points"
-              :key="`${line.id}-${station.sid}`"
+              :key="`${line.id}-${station.sid}-${station.x}`"
               :cx="station.x"
               :cy="station.y"
               r="2.6"

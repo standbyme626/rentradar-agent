@@ -766,7 +766,6 @@ class TransitStation(Base):
 
     __tablename__ = "transit_stations"
     __table_args__ = (
-        UniqueConstraint("line_key", "station_code", name="uq_transit_station"),
         Index("transit_stations_line_seq_idx", "line_key", "seq"),
     )
 
