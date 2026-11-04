@@ -6,7 +6,6 @@ import { adminApi } from '@/api/services/admin'
 import { useLazyData } from '@/composables/useLazyData'
 import { useToast } from '@/composables/useToast'
 import AppSheet from '@/components/ui/AppSheet.vue'
-import { tasks as tasksSnapshot } from './adminData'
 
 const { toast } = useToast()
 const helpOpen = ref(false)
@@ -29,7 +28,7 @@ const taskForm = reactive({
   transport: 'api',
   feedPath: '',
 })
-const { data: items, loading, error, reload } = useLazyData(() => adminApi.tasks(), tasksSnapshot)
+const { data: items, loading, error, reload } = useLazyData(() => adminApi.tasks(), [])
 
 async function reloadCatalog() {
   try {

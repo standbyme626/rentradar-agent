@@ -63,6 +63,7 @@ const prompt = ref('')
 const chatInput = ref('')
 const isMobile = ref(false)
 const statCount = ref<number | null>(null)
+const companyName = ref('')
 
 async function signOut() {
   await auth.logout()
@@ -77,12 +78,14 @@ async function syncStatCount() {
   }
 }
 
-const examples = [
+const displayCompany = computed(() => companyName.value || '公司地址')
+
+const examples = computed(() => [
   {
     icon: Clock3,
     title: '通勤优先',
-    text: '会展中心 · 4000 · 40 分钟内',
-    prompt: '公司在会展中心，预算 4000，想住 5 号线沿线，通勤 40 分钟内，最好有电梯',
+    text: `${displayCompany.value} · 4000 · 40 分钟内`,
+    prompt: `公司在${displayCompany.value}，预算 4000，想住 5 号线沿线，通勤 40 分钟内，最好有电梯`,
   },
   {
     icon: Home,
@@ -102,7 +105,7 @@ const examples = [
     text: '实拍 · 装修 · 图文一致',
     prompt: '帮我对比 5 号线 4500 以内的几套，重点看实拍和装修',
   },
-]
+])
 
 const tabs = computed(() => [
   { key: 'recs', label: '推荐', count: cards.value.length },
@@ -129,6 +132,18 @@ onMounted(() => {
   syncMobile()
   window.addEventListener('resize', syncMobile)
   void syncStatCount()
+  void agentApi
+    .settings()
+    .then((settings) => {
+      const address = settings.commute_destination?.address
+      if (address) {
+        companyName.value = address
+        store.setCompany(address)
+      }
+    })
+    .catch(() => {
+      // keep the generic placeholder; sending a message will surface API errors
+    })
 })
 onBeforeUnmount(() => window.removeEventListener('resize', syncMobile))
 
@@ -298,7 +313,7 @@ function removeCondition(label: string) {
             v-model="prompt"
             rows="2"
             class="w-full resize-none bg-transparent text-[15px] leading-7 text-ink outline-none placeholder:text-faint sm:text-[16px]"
-            placeholder="例如：公司在会展中心，预算 4000，想住 5 号线沿线，通勤 40 分钟内，最好有电梯"
+            :placeholder="`例如：公司在${displayCompany}，预算 4000，想住 5 号线沿线，通勤 40 分钟内，最好有电梯`"
             @keydown.enter.exact.prevent="start()"
           />
           <div class="mt-2 flex items-center gap-2">

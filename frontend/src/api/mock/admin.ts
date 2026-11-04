@@ -570,6 +570,14 @@ export const mockAdminService: AdminService = {
       created_at: new Date().toISOString(),
     } satisfies AgentEvalRun
   },
+  async commuteDestination() {
+    await delay(60)
+    return {
+      address: '深圳会展中心',
+      city: '深圳',
+      example: false,
+    }
+  },
   async agentCost() {
     await delay(120)
     return {

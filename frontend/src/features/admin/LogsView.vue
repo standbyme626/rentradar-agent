@@ -2,10 +2,10 @@
 import { computed, ref } from 'vue'
 import { adminApi } from '@/api/services/admin'
 import { useLazyData } from '@/composables/useLazyData'
-import { formatTime, runs as runsSnapshot } from './adminData'
+import { formatTime } from './adminData'
 
 const status = ref('all')
-const { data: runsData, loading, error, reload } = useLazyData(() => adminApi.runs(), runsSnapshot)
+const { data: runsData, loading, error, reload } = useLazyData(() => adminApi.runs(), [])
 const runs = computed(() => runsData.value)
 const filteredRuns = computed(() =>
   status.value === 'all' ? runs.value : runs.value.filter((run) => run.status === status.value),

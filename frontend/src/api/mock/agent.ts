@@ -228,6 +228,16 @@ export const mockAgentService: AgentService = {
       yield* initialStream(request)
     }
   },
+  async settings() {
+    await delay(40)
+    return {
+      commute_destination: {
+        address: '深圳会展中心',
+        city: '深圳',
+        example: false,
+      },
+    }
+  },
   async stats() {
     await delay(60)
     return {

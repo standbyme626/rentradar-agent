@@ -8,7 +8,7 @@ export function conditionsFor(prompt: string): Conditions {
   const isLong = detectLong(prompt)
   return isLong
     ? {
-        company: '深圳会展中心',
+        company: '',
         budget: '3000 元/月以内',
         line: '5 号线 · 龙岗段',
         commute: '可接受 60–90 分钟',
@@ -18,7 +18,7 @@ export function conditionsFor(prompt: string): Conditions {
         isLong,
       }
     : {
-        company: '深圳会展中心',
+        company: '',
         budget: '3500–4500 元/月',
         line: '5 号线沿线',
         commute: '≤ 40 分钟',

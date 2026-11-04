@@ -2,8 +2,8 @@
 import { computed, ref } from 'vue'
 import type { Community } from '@/api/types'
 import { adminApi } from '@/api/services/admin'
-import { mockQuality } from '@/api/mock/admin'
 import { useLazyData } from '@/composables/useLazyData'
+import { emptyQuality } from './adminData'
 import AdminKpi from './AdminKpi.vue'
 import { useToast } from '@/composables/useToast'
 
@@ -11,7 +11,7 @@ const { toast } = useToast()
 const busyId = ref<number | null>(null)
 const { data: qualityData, loading, error, reload } = useLazyData(
   () => adminApi.quality(),
-  mockQuality,
+  emptyQuality,
 )
 const stats = computed(() => qualityData.value.stats)
 const geoPriority = computed(() => qualityData.value.geoPriority)

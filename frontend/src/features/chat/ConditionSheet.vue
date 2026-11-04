@@ -6,7 +6,7 @@ const props = defineProps<{ open: boolean; company?: string }>()
 const emit = defineEmits<{ close: []; apply: [prompt: string] }>()
 
 const form = reactive({
-  company: '深圳会展中心',
+  company: '',
   budget: '3500–4500',
   commute: '40 分钟',
   layout: '1–2 居室',
@@ -30,7 +30,10 @@ function toggleMust(value: string) {
 
 function apply() {
   const must = form.musts.length ? `，最好有${form.musts.join('、')}` : ''
-  emit('apply', `公司在${form.company}，预算 ${form.budget}，${form.area}，通勤 ${form.commute} 内，${form.layout}${must}`)
+  emit(
+    'apply',
+    `公司在${form.company || '公司地址'}，预算 ${form.budget}，${form.area}，通勤 ${form.commute} 内，${form.layout}${must}`,
+  )
 }
 </script>
 

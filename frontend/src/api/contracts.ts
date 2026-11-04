@@ -102,8 +102,18 @@ export interface AgentTrace {
   result: string
 }
 
+export interface CommuteDestination {
+  address: string
+  city?: string
+  lng?: number
+  lat?: number
+  example?: boolean
+  [key: string]: unknown
+}
+
 export interface AgentService {
   stream(request: AgentRequest): AsyncGenerator<AgentEvent>
+  settings(): Promise<{ commute_destination: CommuteDestination | null }>
   stats(): Promise<{ listings: number; active: number; scored: number }>
   listSessions(): Promise<ChatSession[]>
   listMonitors(): Promise<SavedMonitor[]>
@@ -291,6 +301,7 @@ export interface AdminService {
   agentEval(): Promise<AgentEvalData>
   runAgentEval(): Promise<AgentEvalRun>
   agentCost(days?: number): Promise<AgentCostData>
+  commuteDestination(): Promise<CommuteDestination | null>
   opsStatus(): Promise<OpsStatus>
   runOpsCheck(force?: boolean): Promise<Record<string, unknown>>
   shareLinks(): Promise<ShareLink[]>

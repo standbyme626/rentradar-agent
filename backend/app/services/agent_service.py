@@ -22,6 +22,7 @@ from app.models import (
     Task,
 )
 from app.services import agent_tools, guardrails, llm_service
+from app.services.commute_service import COMMUTE_BUCKETS
 from app.services.settings_service import (
     get_admin_settings,
     get_commute_destination,
@@ -374,6 +375,20 @@ async def _sync_commute_destination(db: AsyncSession, conditions: dict) -> dict 
                 )
             ).scalars().all()
             await rescore_listings(db, task, [int(item) for item in ids])
+            admin_settings = await get_admin_settings(db)
+            batch = max(1, int(admin_settings.get("batchCap") or 10))
+            db.add(
+                Job(
+                    task_id=task.id,
+                    type="sampling",
+                    payload={
+                        "count": batch,
+                        "buckets": list(COMMUTE_BUCKETS),
+                        "modes": ["公交/地铁"],
+                    },
+                    status=JobStatus.queued,
+                )
+            )
             db.add(
                 Job(
                     task_id=task.id,
@@ -620,7 +635,7 @@ async def stream(
                 "type": "toast",
                 "message": (
                     f"公司位置已更新为 {preview_update['address']}，"
-                    "正在按新目的地重算评分"
+                    "正在按新目的地重采通勤"
                 ),
             }
         lower = message.lower()
@@ -733,7 +748,7 @@ async def stream(
                 "type": "toast",
                 "message": (
                     f"公司位置已更新为 {destination_update['address']}，"
-                    "正在按新目的地重算评分"
+                    "正在按新目的地重采通勤"
                 ),
             }
         if new_session:

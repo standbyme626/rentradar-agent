@@ -20,15 +20,15 @@ import {
   X,
 } from 'lucide-vue-next'
 import { adminApi } from '@/api/services/admin'
-import { mockOverview } from '@/api/mock/admin'
 import { useLazyData } from '@/composables/useLazyData'
+import { emptyOverview } from './adminData'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const mobileOpen = ref(false)
-const { data: overview } = useLazyData(() => adminApi.overview(), mockOverview)
+const { data: overview } = useLazyData(() => adminApi.overview(), emptyOverview)
 const stats = computed(() => overview.value.stats)
 
 type NavItem = {

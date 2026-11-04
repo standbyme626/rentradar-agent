@@ -20,7 +20,10 @@ from app.services import (
     share_service,
     task_service,
 )
-from app.services.settings_service import get_admin_settings
+from app.services.settings_service import (
+    get_admin_settings,
+    get_commute_destination,
+)
 
 router = APIRouter(
     prefix="/api/admin",
@@ -61,6 +64,11 @@ async def ops_check(
         ip=request_ip(request),
     )
     return result
+
+
+@router.get("/commute/destination")
+async def commute_destination(db: AsyncSession = Depends(get_db)) -> dict:
+    return await get_commute_destination(db) or {}
 
 
 @router.get("/share-links")

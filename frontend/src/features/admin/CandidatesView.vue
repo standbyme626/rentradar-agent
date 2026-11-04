@@ -7,13 +7,13 @@ import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { useToast } from '@/composables/useToast'
 import { adminApi } from '@/api/services/admin'
 import { useLazyData } from '@/composables/useLazyData'
-import { candidates as candidatesSnapshot, money } from './adminData'
+import { money } from './adminData'
 
 const { toast } = useToast()
 const busy = ref(false)
 const { data: items, loading, error, reload } = useLazyData(
   () => adminApi.candidates(),
-  candidatesSnapshot,
+  [],
 )
 const q = ref('')
 const status = ref('all')
