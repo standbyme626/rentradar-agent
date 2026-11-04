@@ -141,6 +141,55 @@ async def bulk_stats(
     return result
 
 
+def _distance_m(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
+    radius = 6_371_000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * radius * math.asin(math.sqrt(a))
+
+
+async def nearest_destination_key(
+    db: AsyncSession, key: str, *, max_meters: float = 1000.0
+) -> str | None:
+    """Reuse commute samples from a nearby destination key.
+
+    The workspace geocoder can return a POI a few hundred metres from the
+    station used for the existing samples, producing a new exact key with no
+    samples. Falling back to the nearest sampled destination keeps the chat
+    usable instead of hard-filtering every listing out.
+    """
+    try:
+        lng, lat = (float(part) for part in key.split(",", 1))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    rows = (
+        await db.execute(
+            select(CommuteSample.destination_key)
+            .where(
+                CommuteSample.direction == DIRECTION,
+                CommuteSample.fetched_at >= _window_start(),
+            )
+            .distinct()
+        )
+    ).scalars().all()
+    best: str | None = None
+    best_distance = max_meters
+    for candidate in rows:
+        try:
+            candidate_lng, candidate_lat = (
+                float(part) for part in candidate.split(",", 1)
+            )
+        except (AttributeError, TypeError, ValueError):
+            continue
+        distance = _distance_m(lng, lat, candidate_lng, candidate_lat)
+        if distance <= best_distance:
+            best = candidate
+            best_distance = distance
+    return best
+
+
 def _is_fresh(sample: CommuteSample, now: datetime) -> bool:
     ttl = SZMC_TTL_DAYS if sample.provider == "szmc" else AMAP_TTL_DAYS
     return now - _aware(sample.fetched_at) < timedelta(days=ttl)

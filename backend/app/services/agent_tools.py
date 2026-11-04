@@ -23,11 +23,14 @@ from app.models import (
     Snapshot,
     Source,
 )
+from app.core.logging import get_logger
 from app.services import commute_service, listing_service
 from app.services.settings_service import (
     destination_key,
     get_commute_destination,
 )
+
+log = get_logger("agent_tools")
 
 DISTRICTS = (
     "福田区",
@@ -394,7 +397,20 @@ async def _latest_commute(db: AsyncSession) -> dict[int, dict]:
     key = destination_key(destination)
     if key is None:
         return {}
-    return await commute_service.bulk_stats(db, key, destination=destination)
+    stats = await commute_service.bulk_stats(db, key, destination=destination)
+    if stats:
+        return stats
+    nearest = await commute_service.nearest_destination_key(db, key)
+    if nearest is not None:
+        log.warning(
+            "commute_destination_fallback",
+            requested_key=key,
+            sampled_key=nearest,
+        )
+        return await commute_service.bulk_stats(
+            db, nearest, destination=destination
+        )
+    return {}
 
 
 async def search_cards(
@@ -435,7 +451,11 @@ async def search_cards(
     for listing, source_code, city_code, poi in rows:
         stats = commute.get(listing.community_id)
         minutes = round(stats["p50_min"]) if stats else None
-        if max_commute is not None and (minutes is None or minutes > int(max_commute)):
+        if (
+            max_commute is not None
+            and minutes is not None
+            and minutes > int(max_commute)
+        ):
             continue
         item = listing_service._listing_dict(listing, source_code, city_code)
         item["community_id"] = listing.community_id
@@ -460,6 +480,7 @@ async def search_cards(
         "total": total,
         "filtered": len(rows),
         "final": min(len(cards), limit),
+        "commute_missing": sum(1 for item in cards if item["commute_min"] is None),
     }
     return cards[:limit], counts
 
