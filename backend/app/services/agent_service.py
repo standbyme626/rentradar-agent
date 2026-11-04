@@ -522,6 +522,22 @@ def _compact_result(result: dict) -> str:
     return text[:3000]
 
 
+DEPENDENT_TOOLS = {"get_listing", "compare_listings", "commute_lookup", "price_history"}
+
+
+def _has_concrete_tool_args(args: dict) -> bool:
+    if isinstance(args.get("listing_id"), int) or isinstance(
+        args.get("community_id"), int
+    ):
+        return True
+    ids = args.get("listing_ids")
+    return bool(
+        isinstance(ids, list)
+        and ids
+        and all(isinstance(item, int) for item in ids)
+    )
+
+
 async def _execute_tools(
     db: AsyncSession,
     session: AgentSession,
@@ -547,8 +563,17 @@ async def _execute_tools(
         summary = ""
         result: dict = {}
         error_text: str | None = None
-        try:
-            result, summary, resolved = await asyncio.wait_for(
+        if (
+            not cards
+            and tool in DEPENDENT_TOOLS
+            and not _has_concrete_tool_args(args)
+        ):
+            status = "skipped"
+            summary = "无候选，跳过"
+            result = {"skipped": True}
+        else:
+            try:
+                result, summary, resolved = await asyncio.wait_for(
                 agent_tools.execute(
                     db,
                     tool,
@@ -558,12 +583,12 @@ async def _execute_tools(
                     user_id=user_id,
                 ),
                 timeout=8.0,
-            )
-        except Exception as exc:
-            status = "error"
-            error_text = f"{type(exc).__name__}: {exc}"[:300]
-            summary = f"{tool} 失败：{type(exc).__name__}"
-            result = {"error": error_text}
+                )
+            except Exception as exc:
+                status = "error"
+                error_text = f"{type(exc).__name__}: {exc}"[:300]
+                summary = f"{tool} 失败：{type(exc).__name__}"
+                result = {"error": error_text}
         latency = int((time.monotonic() - started) * 1000)
         db.add(
             AgentToolCall(

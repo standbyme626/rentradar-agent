@@ -76,3 +76,12 @@ def test_company_and_explicit_residential_district_are_separate():
 def test_long_commute_marks_long_search():
     conditions = parse_conditions("预算 4500，5 号线，接受 60 分钟通勤")
     assert conditions["isLong"] is True
+
+
+def test_dependent_tool_args_need_concrete_ids():
+    from app.services.agent_service import _has_concrete_tool_args
+
+    assert _has_concrete_tool_args({"listing_id": 12}) is True
+    assert _has_concrete_tool_args({"listing_ids": [1, 2]}) is True
+    assert _has_concrete_tool_args({"listing_id": "$top"}) is False
+    assert _has_concrete_tool_args({"listing_ids": []}) is False
