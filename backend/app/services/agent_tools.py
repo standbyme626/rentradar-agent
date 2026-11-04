@@ -178,6 +178,69 @@ def prompt_catalog() -> str:
     return "\n".join(lines)
 
 
+def native_tool_schemas() -> list[dict[str, Any]]:
+    """OpenAI-compatible function schemas for native tool_calls planning."""
+    schemas: list[dict[str, Any]] = []
+    for item in TOOL_SPECS:
+        if item["name"] in WRITE_TOOLS:
+            continue
+        schema = item["args_model"].model_json_schema()
+        properties = schema.get("properties") or {}
+        for key in ("listing_id", "listing_ids"):
+            prop = properties.get(key)
+            if not prop:
+                continue
+            properties[key] = {
+                "anyOf": [
+                    prop,
+                    {
+                        "type": "string",
+                        "enum": ["$top", "$top3", "$top_ids"],
+                    },
+                ],
+                "description": (
+                    str(prop.get("description") or "")
+                    + " 可引用本次搜索结果：$top/$top3/$top_ids"
+                ).strip(),
+            }
+        schemas.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": item["name"],
+                    "description": item["description"],
+                    "parameters": schema,
+                },
+            }
+        )
+    return schemas
+
+
+def normalize_native_calls(calls: list[dict[str, Any]]) -> list[dict]:
+    """Validate native tool_calls into the same step format as JSON plans."""
+    steps: list[dict] = []
+    for call in calls[:8]:
+        name = str(call.get("name") or "").strip()
+        if name not in planner_tools():
+            raise ToolArgumentError(f"规划包含不允许的工具：{name}")
+        args = call.get("arguments")
+        if not isinstance(args, dict):
+            raise ToolArgumentError(f"{name} 的 tool_calls 参数不是 JSON 对象")
+        _validate_plan_args(name, args)
+        steps.append(
+            {
+                "tool": name,
+                "args": _resolve_static_args(args),
+                "reason": "模型原生工具调用",
+            }
+        )
+    if not steps:
+        raise ToolArgumentError("模型没有选择工具")
+    if steps[0]["tool"] != "search_listings":
+        raise ToolArgumentError("规划第一步必须是 search_listings")
+    return steps
+
+
 def validate_call(name: str, args: dict | None) -> dict:
     spec = _spec(name)
     if spec is None:

@@ -681,3 +681,64 @@ class AgentEvalRun(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class ShareLink(Base):
+    """Revocable read-only dashboard link (P2/W8)."""
+
+    __tablename__ = "share_links"
+    __table_args__ = (Index("share_links_token_idx", "token_hash"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    token_prefix: Mapped[str] = mapped_column(String(12), default="")
+    label: Mapped[str] = mapped_column(String(64), default="只读看板")
+    scope: Mapped[str] = mapped_column(String(32), default="dashboard", server_default="dashboard")
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class ReferenceRent(Base):
+    """Official / semi-official rent reference used by the price score (P3)."""
+
+    __tablename__ = "reference_rents"
+    __table_args__ = (
+        UniqueConstraint(
+            "city_id",
+            "community_id",
+            "layout",
+            "reference_month",
+            "source",
+            name="uq_reference_rent_scope",
+        ),
+        Index("reference_rents_lookup_idx", "city_id", "community_id", "layout"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    city_id: Mapped[int] = mapped_column(ForeignKey("cities.id", ondelete="CASCADE"))
+    community_id: Mapped[int | None] = mapped_column(
+        ForeignKey("communities.id", ondelete="SET NULL")
+    )
+    community_name: Mapped[str | None] = mapped_column(String(128))
+    district: Mapped[str | None] = mapped_column(String(64))
+    layout: Mapped[str] = mapped_column(String(32), default="")
+    monthly_rent: Mapped[int] = mapped_column(Integer)
+    reference_month: Mapped[str] = mapped_column(String(7))
+    source: Mapped[str] = mapped_column(String(32), default="manual")
+    url: Mapped[str | None] = mapped_column(String(512))
+    confidence: Mapped[float] = mapped_column(Numeric(4, 2), default=0.8, server_default="0.8")
+    raw: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

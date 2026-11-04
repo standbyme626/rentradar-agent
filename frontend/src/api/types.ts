@@ -144,8 +144,12 @@ export interface Task {
   id: number
   name: string
   enabled: boolean
+  city_code?: string
+  source_code?: string
   filters: Record<string, unknown>
   schedule: Record<string, number>
+  last_run_status?: string | null
+  last_run_at?: string | null
 }
 
 export interface Stats {
@@ -239,7 +243,7 @@ export interface ImageAnalysis {
   verdict: 'clear' | 'watch' | 'suspicious' | 'unknown'
   confidence: number | null
   signals: ImageAnalysisSignal[]
-  quality: Record<string, number | boolean | null>
+  quality: Record<string, unknown>
   needs_vision: boolean
   analyzed_at: string | null
 }
@@ -461,4 +465,119 @@ export interface MapData {
     cache_days: number
   }
   stats: { communities: number; listings: number; with_commute: number }
+}
+
+export interface OpsAlert {
+  code: string
+  severity: 'critical' | 'warning' | 'info'
+  message: string
+}
+
+export interface OpsSnapshot {
+  generated_at: string
+  db: string
+  queued_jobs: number
+  running_jobs: number
+  oldest_queued_minutes: number | null
+  failed_jobs_1h: number
+  failing_tasks: Array<{ task_id: number; name: string; last_error: string }>
+  providers: Array<{
+    code: string
+    status: string
+    consecutive_failures: number
+    circuit_open_until: string | null
+    last_error: string | null
+  }>
+  disk: { path: string; used_pct: number; free_gb: number } | null
+  backup: {
+    configured: boolean
+    dir: string
+    latest_age_hours: number | null
+    marker: Record<string, unknown>
+  }
+}
+
+export interface OpsStatus {
+  snapshot: OpsSnapshot
+  alerts: OpsAlert[]
+  state: Record<string, unknown>
+  settings: { alertPush?: boolean; alertIntervalMinutes?: number }
+}
+
+export interface ShareLink {
+  id: number
+  label: string
+  token_prefix: string
+  scope: string
+  created_at: string
+  expires_at: string | null
+  revoked_at: string | null
+  last_used_at: string | null
+  use_count: number
+  active: boolean
+  token?: string
+}
+
+export interface SourceInfo {
+  id: number
+  code: string
+  name: string
+  kind: string
+  enabled: boolean
+  rate_limit: Record<string, unknown>
+  listings: number
+  tasks: number
+  supported: boolean
+  reserved: boolean
+  note: string
+}
+
+export interface CityInfo {
+  id: number
+  code: string
+  name: string
+  domain_template: string
+  center_lng: number | null
+  center_lat: number | null
+  enabled: boolean
+  listings: number
+  communities: number
+  tasks: number
+  active_listings?: number
+  enabled_tasks?: number
+}
+
+export interface ReferenceRent {
+  id: number
+  community_id: number | null
+  community_name: string | null
+  district: string | null
+  layout: string
+  monthly_rent: number
+  reference_month: string
+  source: string
+  url: string | null
+  confidence: number
+  updated_at: string
+}
+
+export interface PublicDashboard {
+  generated_at: string
+  totals: {
+    active_listings: number
+    scored_listings: number
+    communities: number
+    districts: number
+    scored_ratio: number
+  }
+  districts: Array<{
+    name: string
+    listings: number
+    median_rent: number | null
+    avg_score: number | null
+  }>
+  price_bands: Record<string, number>
+  line5: { shards: number; listings: number; complete: number; scanned: number }
+  data_note: string
+  source: { name: string; url: string }
 }

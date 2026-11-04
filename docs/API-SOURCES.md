@@ -141,10 +141,10 @@ cd backend
 
 | 平台 | 接口 | 说明 | 状态 |
 |---|---|---|---|
-| **自如** | `GET https://m.ziroom.com/v7/room/list.json?city_code=440300&page=1&...` | 深圳 `city_code=440300`；返回 `data.rooms[]`（id/house_id/name/area/floor/photo 等） | 已验证 |
+| **自如** | `GET https://m.ziroom.com/v7/room/list.json?city_code=440300&page=1&...` | 深圳 `city_code=440300`；返回 `data.rooms[]`（id/house_id/name/area/floor/photo 等） | 已接入 `backend/app/sources/ziroom.py`（2026-11-04） |
 | 自如详情 | `GET https://m.ziroom.com/wap/detail/room.json?city_code=440300&id={id}` | 需带 referer/accept 版本；实测部分 id 返回「已下架」 | 待验证 |
 
-自如有几个特点：价格字段是图片（`price` 是 PNG 数组），需要 OCR 或从详情接口取数字；列表有分页，建议低频。
+自如价格字段是 PNG 精灵图 + 数字索引数组；`ziroom.py` 从精灵图字形 dHash 模板解出数字顺序，再按索引还原月租（未知精灵图会跳过该条，不会猜价）。列表有分页，建议低频；`ziroom` source 默认停用，需在 `/admin/ops` 启用。
 
 #### 接口存活、但需要城市 ID / 参数
 
@@ -560,3 +560,34 @@ GET https://map.amap.com/service/subway?_1469083453978&srhdata=4403_drw_shenzhen
 - `GET /api/maps/tiles/{layer}/{z}/{x}/{y}`：天地图 WMTS 代理 + 磁盘缓存（默认 30 天）；Key 仅在服务端，沿用 10943 出口。
 - `GET /api/maps/tiles/stats/cache`：缓存统计（admin）。
 - 天地图 WMTS：`https://t{0-7}.tianditu.gov.cn/{layer}_w/wmts?...&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=...`；`_w` 矩阵集，1–18 级，256px；详见 `docs/TIANDITU-MAP.md`。
+
+---
+
+## 10. P2/P3 新增数据源与接口（2026-11-04）
+
+### 10.1 OpenCode Go（AI，已接入）
+
+```
+POST https://opencode.ai/zen/go/v1/chat/completions
+Authorization: Bearer <OPENCODE_GO_API_KEY>
+User-Agent: RentRadar/<version> (self-hosted; +https://github.com/standbyme626/rentradar-agent)
+x-opencode-session: rentradar-<stable-hash>
+```
+
+- 模型：`deepseek-v4.1-flash`（`GET /zen/go/v1/models` 可列目录）。
+- 原生 `tools` / `tool_calls` 已实测可用；`reasoning_content` 可能非空。
+- 缺真实 UA 或 session header 会被 Cloudflare 拒绝（HTTP 403，`error code: 1010`）。
+- 服务端已封装 `backend/app/integrations/ai/opencode_go.py`，业务不直接调 HTTP。
+
+### 10.2 手动房源源（已接入）
+
+- `manual` source：JSON 数组/`{items: []}` 或 CSV；字段 `id/url/community_name/layout/area/rent/tags/city`。
+- 默认停用；在 `/admin/ops` 启用后由任务 `filters.feed_path` 或 `python -m app.cli import-listings` 导入。
+- 跨源去重：同城市 + 规范化小区 + 同户型 + 租金 ±3% + 面积 ±5%；命中只记 alias，不新增房源行。
+- `ziroom` 仅预留 source 行，未接入抓取。
+
+### 10.3 参考租金（人工导入）
+
+- 表 `reference_rents`：城市/小区/户型/月份/月租/来源/URL/置信度。
+- 当前无住建局 API Key；用 `/admin/ops` 或 `python -m app.cli import-reference-rents --file ...` 导入。
+- 评分价格项在有参考价且置信度 ≥0.5 时优先使用参考价，否则回落到同小区/同区挂牌中位价。

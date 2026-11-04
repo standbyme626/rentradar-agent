@@ -196,3 +196,17 @@ curl -s -X POST http://192.168.31.197:8010/api/admin/providers/tianditu/test | p
 ## 交接
 
 完整交接见 `HANDOFF.md`。当前生产采集走贝壳 App API，快扫/慢扫均已恢复；CDP 因验证码暂停，仅作兜底。鉴权/额度/设置/监控运行时已接；下一步是 Agent 工具运行时、5 号线覆盖、图片 AI、地铁/开放数据与通勤 p50/p90。
+
+## P2/P3 收口（2026-11-04）
+
+> 分支 `agent/implement-p2-p4-5fe8bf7e4a90`，基于 P1（PR #4）。迁移 head `d4e5f6a7b8c9`。
+
+- **AI Provider**：新增 `opencode_go_deepseek`（OpenCode Go · DeepSeek V4.1 Flash），优先级 5；ModelScope 降为兜底。配置 `OPENCODE_GO_API_KEY/BASE_URL/MODEL`。网关要求真实 UA + `x-opencode-session`，客户端已内置；`403/error 1010` 多半是缺这两个头。真实调用 2.8s 成功；原生 tool_calls 返回 `search_listings`。`aiDailyCap` 现在对所有 AI domain Provider 生效。
+- **Agent 原生工具**：`APP_AGENT_NATIVE_TOOLS=false` 默认关闭；开启后 `llm_service.plan_tools_native` 先走 tool_calls，失败回退严格 JSON，再回退规则版。工具参数仍本地校验；`save_monitor` 不在原生工具列表。
+- **运维**：`alert_service` + scheduler `alert_check` + worker；告警覆盖 DB/队列/源连续失败/Provider 熔断/磁盘/备份失败与过期；阈值在设置页；状态存 `app_settings.alert_state`；管理端 `/admin/ops`。备份脚本写 `last_backup.json`，新增 `restore-drill.sh` 临时库演练。
+- **只读分享**：`share_links` 表只存 SHA-256；`/api/public/dashboard/<token>` 聚合 + 60/分/IP 限流 + `X-Robots-Tag: noindex`；前端 `/share/:token`。不含标题/图片/地址/联系方式。公网前仍需 TLS/反代。
+- **多城市/多源**：城市/来源管理 API + `/admin/ops` 开关；scheduler 单任务异常不再中断整轮；`manual` JSON/CSV 导入源（默认停用）；`ziroom` 公开列表 API 已接入（默认停用，价格从 PNG 精灵图解码）；跨源同小区/户型/租金(±3%)/面积(±5%) 去重并记 alias。
+- **参考租金**：`reference_rents` 表 + 导入/删除 API/CLI；评分价格项有参考价时优先于挂牌中位价；没有住建局 API，当前为人工导入。
+- **CI**：`.github/workflows/ci.yml`（ruff+pytest、Postgres 迁移升降级、前端构建）。
+- **测试**：154 passed；ruff 全绿；前端 `vue-tsc` + `npm run build` 通过；迁移离线 SQL 通过。
+- **仍未验证**：生产迁移/备份/恢复、覆盖率与 Top 候选数据、iPhone 外卖样本、天地图 Key、视觉标签、58/自如真实源、住建局自动取数。详见 `docs/P2-P4-COMPLETION.md`。

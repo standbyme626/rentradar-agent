@@ -95,6 +95,61 @@ async def probe_community(
     }
 
 
+async def record_manual_probe(
+    db: AsyncSession,
+    community_id: int,
+    *,
+    meal_period_value: str,
+    eta_low: int,
+    eta_high: int,
+    fee: float | None = None,
+    merchant_count: int | None = None,
+    address_label: str | None = None,
+    confidence: float = 0.7,
+    raw_text: str = "manual",
+) -> dict:
+    """Record a probe observed on the phone without running the automation.
+
+    This keeps the acceptance path usable when the iPhone accessibility tree is
+    unstable: an operator can read the ETA/fee from the screen and record it
+    with the same shape as the automated probe.
+    """
+    community = await db.get(Community, community_id)
+    if community is None:
+        raise ValueError(f"community {community_id} not found")
+    if meal_period_value not in {"lunch", "dinner", "late_night", "other"}:
+        raise ValueError(f"unknown meal period: {meal_period_value}")
+    if eta_low <= 0 or eta_high < eta_low:
+        raise ValueError("eta must satisfy 0 < low <= high")
+    probe = DeliveryProbe(
+        community_id=community.id,
+        platform="meituan",
+        probe_at=datetime.now(UTC),
+        meal_period=meal_period_value,
+        address_label=address_label or community.name,
+        eta_min_low=eta_low,
+        eta_min_high=eta_high,
+        fee=fee,
+        merchant_count=merchant_count,
+        raw_text=raw_text,
+        screenshot_paths=[],
+        confidence=confidence,
+        device_id="manual",
+    )
+    db.add(probe)
+    await db.commit()
+    await db.refresh(probe)
+    return {
+        "id": probe.id,
+        "community": community.name,
+        "meal_period": probe.meal_period,
+        "eta": [probe.eta_min_low, probe.eta_min_high],
+        "fee": float(probe.fee) if probe.fee is not None else None,
+        "confidence": float(probe.confidence) if probe.confidence is not None else None,
+        "device_id": probe.device_id,
+    }
+
+
 async def probe_for_listing(db: AsyncSession, listing_id: int) -> dict:
     listing = await db.get(Listing, listing_id)
     if listing is None or listing.community_id is None:

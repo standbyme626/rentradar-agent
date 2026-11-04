@@ -90,6 +90,15 @@ const qualitySignals = computed(() =>
   (imageAnalysis.value?.signals ?? []).filter((item) => ['low_resolution', 'dark_cover', 'cover_missing', 'cover_unavailable'].includes(item.code)),
 )
 
+function visionTags(analysis: { quality?: Record<string, unknown> } | null | undefined) {
+  const vision = analysis?.quality?.vision
+  if (!vision || typeof vision !== 'object') return []
+  const tags = (vision as { tags?: unknown }).tags
+  return Array.isArray(tags)
+    ? (tags as Array<{ tag: string; confidence: number }>).slice(0, 6)
+    : []
+}
+
 function verdictLabel(value: string | undefined) {
   if (value === 'suspicious') return '可疑（≥2 信号）'
   if (value === 'watch') return '观察（1 个信号）'
@@ -143,7 +152,7 @@ function saveWatchNote() {
       </div>
 
       <CoverPlaceholder :name="listing.community_name" :variant="0" height="150px" />
-      <p class="mt-1.5 text-[10px] text-faint">列表只提供封面图；详情图/AI 尚未接入，不用占位图冒充实拍。</p>
+      <p class="mt-1.5 text-[10px] text-faint">列表只提供封面图；详情多图不可用，封面分析/视觉标签以管理端真实结果为准。</p>
 
       <div class="mt-3 flex flex-wrap gap-1.5">
         <span class="tag-green">评分 {{ listing.score ?? '—' }}</span>
@@ -238,7 +247,7 @@ function saveWatchNote() {
           >{{ verdictLabel(imageAnalysis.verdict) }}</span>
           <span class="tag-neutral">置信度 {{ imageAnalysis.confidence != null ? `${Math.round(imageAnalysis.confidence * 100)}%` : '—' }}</span>
           <span class="tag-neutral">dHash 已算</span>
-          <span v-if="imageAnalysis.needs_vision" class="tag-amber">视觉标签未授权</span>
+          <span v-if="imageAnalysis.needs_vision" class="tag-amber">视觉标签待生成</span>
         </div>
         <div v-if="fakeSignals.length" class="mt-2 flex flex-wrap gap-1">
           <span v-for="signal in fakeSignals" :key="signal.code" class="rounded border border-coral/30 bg-coral-soft px-1.5 py-0.5 text-[9.5px] text-coral" :title="JSON.stringify(signal.evidence)">
@@ -246,6 +255,15 @@ function saveWatchNote() {
           </span>
         </div>
         <div v-else class="mt-2 text-[10.5px] text-faint">未命中重复封面 / 低价 / 中介话术信号；这不等于图片真实。</div>
+        <div v-if="visionTags(imageAnalysis).length" class="mt-2 flex flex-wrap gap-1">
+          <span
+            v-for="tag in visionTags(imageAnalysis)"
+            :key="tag.tag"
+            class="rounded border border-forest/20 bg-forest-soft px-1.5 py-0.5 text-[9.5px] text-forest"
+          >
+            {{ tag.tag }} · {{ Math.round(tag.confidence * 100) }}%
+          </span>
+        </div>
         <div v-if="qualitySignals.length" class="mt-1 text-[10px] text-faint">
           质量提示：{{ qualitySignals.map((item) => item.label).join('、') }}
         </div>
@@ -348,7 +366,7 @@ function saveWatchNote() {
 
       <h4 class="mt-5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">图片 / AI</h4>
       <div class="mt-2 rounded-xl border border-forest/20 bg-forest-soft/60 px-3.5 py-3 text-[11px] leading-6 text-muted">
-        真实版本：封面 pHash 去重 + 视觉标签 + 置信度 + 原文证据。当前未接入，不用演示值冒充。
+        已接入：封面 dHash 去重 + 可选视觉标签/置信度 + 价格/话术证据；详情多图不可用，不虚构图片结论。
       </div>
     </template>
 

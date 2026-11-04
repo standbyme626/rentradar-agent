@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from app.core.db import SessionLocal
 from app.core.logging import configure_logging, get_logger
 from app.models import Job, JobStatus, Listing, ListingStatus, Task
-from app.services import image_service, monitor_service
+from app.services import alert_service, image_service, monitor_service
 from app.services.crawl_service import run_task
 from app.services.digest_service import send_digest
 from app.services.enrich_service import (
@@ -56,11 +56,13 @@ async def process_once() -> bool:
     job_id, task_id, payload, attempts, max_attempts, job_type = claimed
     log.info("job_started", job_id=job_id, task_id=task_id, type=job_type, attempts=attempts)
 
-    if job_type in {"digest", "monitor_match"}:
+    if job_type in {"digest", "monitor_match", "alert_check"}:
         async with SessionLocal() as db:
             try:
                 if job_type == "digest":
                     result = await send_digest(db)
+                elif job_type == "alert_check":
+                    result = await alert_service.check_and_notify(db)
                 else:
                     result = await monitor_service.process_monitors(db)
                 job = await db.get(Job, job_id)

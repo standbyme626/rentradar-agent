@@ -4,11 +4,20 @@ from time import monotonic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.base import BaseProvider, ProviderError
+from app.integrations.base import BaseProvider, ProviderDomain, ProviderError
 from app.integrations.registry import load_default_providers, registry
 from app.models import ProviderCall, ProviderHealth, ProviderSetting, ProviderUsage
 from app.services import provider_runtime
 from app.services.settings_service import get_admin_settings
+
+
+def _cap_key(provider: BaseProvider) -> str | None:
+    """Map provider to the runtime hard cap that governs it."""
+    if provider.meta.domain == ProviderDomain.ai:
+        return "aiDailyCap"
+    if provider.meta.code == "amap":
+        return "amapMonthlyCap"
+    return None
 
 
 def _health_dict(health: ProviderHealth | None) -> dict:
@@ -54,10 +63,7 @@ async def _provider_payload(
     setting = await db.get(ProviderSetting, code)
     health = await db.get(ProviderHealth, code)
     admin_settings = await get_admin_settings(db)
-    cap_key = {
-        "amap": "amapMonthlyCap",
-        "modelscope_deepseek": "aiDailyCap",
-    }.get(code)
+    cap_key = _cap_key(provider)
     used, limit, period = await provider_runtime.usage_snapshot(
         db, provider, admin_settings=admin_settings, cap_key=cap_key
     )
@@ -159,10 +165,7 @@ async def test_provider(db: AsyncSession, code: str) -> dict | None:
 
     if quota_units:
         admin_settings = await get_admin_settings(db)
-        cap_key = {
-            "amap": "amapMonthlyCap",
-            "modelscope_deepseek": "aiDailyCap",
-        }.get(code)
+        cap_key = _cap_key(provider)
         _, effective_limit, period = await provider_runtime.usage_snapshot(
             db, provider, admin_settings=admin_settings, cap_key=cap_key
         )

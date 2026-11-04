@@ -21,10 +21,15 @@ import type {
   AgentSession,
   Candidate,
   ImagesData,
+  OpsStatus,
+  ReferenceRent,
   ReputationMention,
   ReputationOverview,
   ReputationSummary,
   Run,
+  ShareLink,
+  SourceInfo,
+  CityInfo,
   Task,
 } from '../types'
 
@@ -117,6 +122,45 @@ const httpAdminService: AdminService = {
       body: JSON.stringify({ mode: 'rules' }),
     }),
   agentCost: (days = 7) => request<AgentCostData>(`/admin/agent/cost?days=${days}`),
+  opsStatus: () => request<OpsStatus>('/admin/ops/status'),
+  runOpsCheck: (force = false) =>
+    request<Record<string, unknown>>(`/admin/ops/check?force=${force ? 'true' : 'false'}`, {
+      method: 'POST',
+    }),
+  shareLinks: () => request<ShareLink[]>('/admin/share-links'),
+  createShareLink: (label, expiresDays) =>
+    request<ShareLink>('/admin/share-links', {
+      method: 'POST',
+      body: JSON.stringify({ label, expiresDays }),
+    }),
+  revokeShareLink: (id) =>
+    request<ShareLink>(`/admin/share-links/${id}`, { method: 'DELETE' }),
+  sources: () => request<SourceInfo[]>('/admin/sources'),
+  updateSource: (code, enabled) =>
+    request<SourceInfo>(`/admin/sources/${code}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    }),
+  cities: () => request<CityInfo[]>('/admin/cities'),
+  updateCity: (code, enabled) =>
+    request<CityInfo>(`/admin/cities/${code}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    }),
+  createTask: (payload) =>
+    request<Task>('/admin/tasks', { method: 'POST', body: JSON.stringify(payload) }),
+  updateTask: (id, payload) =>
+    request<Task>(`/admin/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  disableTask: (id) => request<Task>(`/admin/tasks/${id}`, { method: 'DELETE' }),
+  referenceRents: (city) =>
+    request<ReferenceRent[]>(`/admin/reference-rents${city ? `?city=${city}` : ''}`),
+  importReferenceRents: (city, rows) =>
+    request<Record<string, number>>('/admin/reference-rents/import', {
+      method: 'POST',
+      body: JSON.stringify({ cityCode: city, rows }),
+    }),
+  deleteReferenceRent: (id) =>
+    request<{ ok: boolean }>(`/admin/reference-rents/${id}`, { method: 'DELETE' }),
 }
 
 export const adminApi: AdminService = apiConfig.useMockAdmin ? mockAdminService : httpAdminService

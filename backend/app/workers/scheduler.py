@@ -68,57 +68,66 @@ async def tick() -> dict:
             .all()
         )
         for task in tasks:
-            if await _recent_failures(db, task):
-                log.warning("task_circuit_open", task_id=task.id)
-                continue
-            filters = task.filters or {}
-            schedule = task.schedule or {}
-            fast = int(schedule.get("fast_minutes", 10))
-            slow = int(schedule.get("slow_minutes", 180))
-            district = str(filters.get("district") or "")
-            line = str(filters.get("line") or "")
-            fast_pages = int(filters.get("fast_pages", 1))
-            slow_pages = int(filters.get("slow_pages", 6))
-            shard_line, next_filters = next_shard(filters)
-            fast_id = await _enqueue(
-                db,
-                task,
-                "crawl_fast",
-                fast,
-                {
-                    "pages": fast_pages,
-                    "sort": "newest",
-                    "district": district,
-                    "line": line,
-                    "full_scan": False,
-                    "notify": True,
-                },
-            )
-            slow_id = await _enqueue(
-                db,
-                task,
-                "crawl_slow",
-                slow,
-                {
-                    "pages": slow_pages,
-                    "sort": "newest",
-                    "district": district,
-                    "line": shard_line or line,
-                    "full_scan": True,
-                    "notify": False,
-                    "shard": bool(shard_line),
-                },
-            )
-            if fast_id:
-                created[f"fast_{task.id}"] = fast_id
-            if slow_id:
-                if shard_line:
-                    # Advance only when the shard job was actually queued; an
-                    # active slow job must keep the cursor stable.
-                    task.filters = next_filters
-                    created[f"shard_{task.id}"] = shard_line
-                created[f"slow_{task.id}"] = slow_id
+            try:
+                if await _recent_failures(db, task):
+                    log.warning("task_circuit_open", task_id=task.id)
+                    continue
+                filters = task.filters or {}
+                schedule = task.schedule or {}
+                fast = int(schedule.get("fast_minutes", 10))
+                slow = int(schedule.get("slow_minutes", 180))
+                district = str(filters.get("district") or "")
+                line = str(filters.get("line") or "")
+                fast_pages = int(filters.get("fast_pages", 1))
+                slow_pages = int(filters.get("slow_pages", 6))
+                shard_line, next_filters = next_shard(filters)
+                fast_id = await _enqueue(
+                    db,
+                    task,
+                    "crawl_fast",
+                    fast,
+                    {
+                        "pages": fast_pages,
+                        "sort": "newest",
+                        "district": district,
+                        "line": line,
+                        "full_scan": False,
+                        "notify": True,
+                    },
+                )
+                slow_id = await _enqueue(
+                    db,
+                    task,
+                    "crawl_slow",
+                    slow,
+                    {
+                        "pages": slow_pages,
+                        "sort": "newest",
+                        "district": district,
+                        "line": shard_line or line,
+                        "full_scan": True,
+                        "notify": False,
+                        "shard": bool(shard_line),
+                    },
+                )
+                if fast_id:
+                    created[f"fast_{task.id}"] = fast_id
+                if slow_id:
+                    if shard_line:
+                        # Advance only when the shard job was actually queued; an
+                        # active slow job must keep the cursor stable.
+                        task.filters = next_filters
+                        created[f"shard_{task.id}"] = shard_line
+                    created[f"slow_{task.id}"] = slow_id
 
+            except Exception as exc:  # one bad city/task must not stop the tick
+                await db.rollback()
+                log.error(
+                    "task_schedule_failed",
+                    task_id=task.id,
+                    error=str(exc)[:300],
+                )
+                created[f"error_{task.id}"] = -1
         now = datetime.now(TZ)
         if admin_settings.get("digest", True) and 9 <= now.hour < 10:
             day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
@@ -163,6 +172,35 @@ async def tick() -> dict:
                 db.add(job)
                 await db.flush()
                 created["monitor_match"] = job.id
+
+        if admin_settings.get("alertPush", True):
+            interval = max(5, int(admin_settings.get("alertIntervalMinutes") or 10))
+            active = await db.scalar(
+                select(func.count())
+                .select_from(Job)
+                .where(
+                    Job.type == "alert_check",
+                    Job.status.in_([JobStatus.queued, JobStatus.running]),
+                )
+            )
+            latest = await db.scalar(
+                select(func.max(Job.created_at)).where(Job.type == "alert_check")
+            )
+            due = latest is None
+            if latest is not None:
+                if latest.tzinfo is None:
+                    latest = latest.replace(tzinfo=UTC)
+                due = datetime.now(UTC) - latest >= timedelta(minutes=interval)
+            if not active and due:
+                job = Job(
+                    task_id=None,
+                    type="alert_check",
+                    payload={},
+                    status=JobStatus.queued,
+                )
+                db.add(job)
+                await db.flush()
+                created["alert_check"] = job.id
         await db.commit()
     if created:
         log.info("scheduler_enqueued", **created)

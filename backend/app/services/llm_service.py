@@ -195,6 +195,70 @@ async def plan_tools(
     return steps, meta
 
 
+async def plan_tools_native(
+    db: AsyncSession, message: str, conditions: dict
+) -> tuple[list[dict] | None, dict]:
+    """Native tool_calls planner (OpenCode Go).
+
+    The provider is asked to call the real whitelisted tools.  The arguments
+    are validated locally and converted into the same step format as the
+    strict-JSON planner; callers still fall back to JSON/rules on any error.
+    """
+    system = (
+        "你是 RentRadar 的找房工具规划器。先调用 search_listings 检索本地库存；"
+        "如需详情、对比、通勤或价格历史，可继续调用对应工具。"
+        "最多 4 步，只能使用提供的工具；缺少房源 id 时可用 $top/$top3/$top_ids "
+        "引用本次搜索结果；不要调用写操作，不要输出解释。"
+    )
+    user = json.dumps(
+        {"conditions": conditions, "message": message}, ensure_ascii=False
+    )
+    started = time.monotonic()
+    try:
+        result = await provider_runtime.invoke_chat(
+            db,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=700,
+            temperature=0.0,
+            tools=agent_tools.native_tool_schemas(),
+            tool_choice="auto",
+        )
+    except Exception as exc:
+        return None, _empty_meta(f"{type(exc).__name__}: {exc}"[:200])
+    latency = int((time.monotonic() - started) * 1000)
+    meta = {
+        "model": result.get("model", ""),
+        "prompt_tokens": result.get("prompt_tokens", 0),
+        "completion_tokens": result.get("completion_tokens", 0),
+        "cost": 0.0,
+        "fallback": False,
+        "error": None,
+        "calls": [
+            [
+                "llm_tool_plan",
+                result.get("model", ""),
+                f"{latency}ms",
+                f"{result.get('prompt_tokens', 0)}+{result.get('completion_tokens', 0)} tok",
+            ]
+        ],
+    }
+    calls = result.get("tool_calls") or []
+    if not calls:
+        meta["fallback"] = True
+        meta["error"] = "模型未选择工具"
+        return None, meta
+    try:
+        steps = agent_tools.normalize_native_calls(calls)
+    except agent_tools.ToolArgumentError as exc:
+        meta["fallback"] = True
+        meta["error"] = str(exc)[:200]
+        return None, meta
+    return steps, meta
+
+
 async def answer(
     db: AsyncSession,
     cards: list[dict],

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.models import AgentMonitor, AgentSession, AgentToolCall
 from app.services import agent_tools, guardrails, llm_service
@@ -600,8 +601,16 @@ async def stream(
 
         if new_session:
             steps = None
-            if allow_llm:
-                steps, plan_meta = await llm_service.plan_tools(db, masked, conditions)
+            if allow_llm and settings.agent_native_tools:
+                steps, plan_meta = await llm_service.plan_tools_native(
+                    db, masked, conditions
+                )
+            if allow_llm and not steps:
+                json_steps, json_meta = await llm_service.plan_tools(
+                    db, masked, conditions
+                )
+                steps = json_steps
+                plan_meta = llm_service.merge_meta(plan_meta, json_meta)
             if not steps:
                 steps = agent_tools.rule_plan(masked, conditions)
             cards, counts, conditions, trace, tool_results, tool_plan = (
@@ -614,8 +623,16 @@ async def stream(
                 intent, parse_meta = await llm_service.parse_intent(db, masked, base)
             conditions = _merge_llm_conditions(rule, intent)
             steps = None
-            if allow_llm:
-                steps, plan_meta = await llm_service.plan_tools(db, masked, conditions)
+            if allow_llm and settings.agent_native_tools:
+                steps, plan_meta = await llm_service.plan_tools_native(
+                    db, masked, conditions
+                )
+            if allow_llm and not steps:
+                json_steps, json_meta = await llm_service.plan_tools(
+                    db, masked, conditions
+                )
+                steps = json_steps
+                plan_meta = llm_service.merge_meta(plan_meta, json_meta)
             if not steps:
                 steps = agent_tools.rule_plan(masked, conditions)
             cards, counts, conditions, trace, tool_results, tool_plan = (

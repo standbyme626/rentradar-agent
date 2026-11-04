@@ -8,6 +8,7 @@ called by default: no vision model is approved, so ``needs_vision`` stays true
 and the admin page says so instead of showing invented labels.
 """
 
+import base64
 import hashlib
 import io
 import json
@@ -29,6 +30,7 @@ from app.models import (
     ListingImageAnalysis,
     ListingStatus,
 )
+from app.services import provider_runtime
 
 log = get_logger("images")
 
@@ -49,8 +51,8 @@ AGENCY_KEYWORDS = (
 MAX_BATCH = 200
 # Only the Beike/Lianjia image CDN is expected here; anything else is skipped so
 # a manipulated listing URL cannot make the worker fetch arbitrary hosts (SSRF).
-ALLOWED_IMAGE_HOSTS = ("ke-image.ljcdn.com",)
-ALLOWED_IMAGE_SUFFIXES = (".ljcdn.com",)
+ALLOWED_IMAGE_HOSTS = ("ke-image.ljcdn.com", "img.ziroom.com")
+ALLOWED_IMAGE_SUFFIXES = (".ljcdn.com", ".ziroom.com")
 
 
 def _cache_dir() -> Path:
@@ -305,6 +307,63 @@ def _quality_signals(quality: dict) -> list[dict]:
     return signals
 
 
+VISION_SIGNAL_MAP = {
+    "样板间": ("vision_staged", "样板间/精修图", "medium", 0.6),
+    "采光差": ("vision_dark", "采光偏暗", "low", 0.5),
+    "水渍": ("vision_water", "疑似水渍", "high", 0.65),
+    "霉斑": ("vision_mold", "疑似霉斑", "high", 0.7),
+    "图文不符": ("vision_mismatch", "图文不符", "high", 0.7),
+}
+VISION_QUALITY_TAGS = {"实拍", "精装修", "采光好"}
+
+
+def _vision_data_url(image: Image.Image) -> str:
+    copy = image.convert("RGB")
+    copy.thumbnail((768, 768), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    copy.save(buffer, format="JPEG", quality=82, optimize=True)
+    payload = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/jpeg;base64,{payload}"
+
+
+def _vision_signals(vision: dict) -> list[dict]:
+    signals: list[dict] = []
+    for item in vision.get("tags") or []:
+        tag = str((item or {}).get("tag") or "").strip()
+        mapped = VISION_SIGNAL_MAP.get(tag)
+        if mapped is None:
+            continue
+        code, label, severity, base = mapped
+        try:
+            confidence = float((item or {}).get("confidence"))
+        except (TypeError, ValueError):
+            confidence = base
+        signals.append(
+            {
+                "code": code,
+                "label": label,
+                "severity": severity,
+                "confidence": round(min(0.9, max(0.3, confidence)), 2),
+                "evidence": {
+                    "model": vision.get("model"),
+                    "summary": vision.get("summary"),
+                    "tag": tag,
+                },
+            }
+        )
+    return signals
+
+
+async def _vision_tags(db: AsyncSession, image: Image.Image) -> dict | None:
+    if not settings.image_vision_enabled:
+        return None
+    try:
+        return await provider_runtime.invoke_image_tag(db, _vision_data_url(image))
+    except Exception as exc:  # vision is optional; never fail the local pipeline
+        log.warning("image_vision_failed", error=f"{type(exc).__name__}: {exc}"[:200])
+        return None
+
+
 def classify(signals: list[dict]) -> tuple[str, float]:
     fake = [item for item in signals if item["code"] not in {"low_resolution", "dark_cover"}]
     if len(fake) >= 2:
@@ -335,6 +394,7 @@ async def analyze_listing(db: AsyncSession, listing: Listing) -> dict:
         await db.flush()
     quality: dict = {}
     signals: list[dict] = []
+    vision: dict | None = None
     if url and record is not None:
         try:
             path, data, content_type = await _download(url, listing.id)
@@ -356,6 +416,11 @@ async def analyze_listing(db: AsyncSession, listing: Listing) -> dict:
             duplicate = await _duplicate_signal(db, listing, phash)
             if duplicate:
                 signals.append(duplicate)
+            if settings.image_vision_enabled:
+                vision = await _vision_tags(db, image)
+                if vision:
+                    quality["vision"] = vision
+                    signals.extend(_vision_signals(vision))
         except Exception as exc:  # download/format failure is expected sometimes
             if record is not None:
                 record.status = "failed"
@@ -394,7 +459,7 @@ async def analyze_listing(db: AsyncSession, listing: Listing) -> dict:
     analysis.verdict = verdict
     analysis.confidence = confidence
     analysis.quality = quality
-    analysis.needs_vision = not settings.image_vision_enabled
+    analysis.needs_vision = not bool(vision)
     analysis.analyzed_at = now
     await db.commit()
     db.info.pop("phash_index", None)
@@ -459,7 +524,7 @@ async def batch_analyze(
             stats["watch"] += 1
         if any(item["code"] == "duplicate_image" for item in result["signals"]):
             stats["duplicates"] += 1
-        if result.get("quality") and settings.image_vision_enabled is False:
+        if result.get("quality") and not result.get("vision"):
             stats["vision_pending"] += 1
     return stats
 
