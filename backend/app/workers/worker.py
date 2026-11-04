@@ -119,6 +119,8 @@ async def process_once() -> bool:
                 settings = await get_admin_settings(db)
                 cap = max(1, int(settings.get("batchCap") or 10))
                 count = max(1, min(int(payload.get("count") or 10), cap))
+                buckets = [str(item) for item in payload.get("buckets") or [] if str(item)]
+                modes = [str(item) for item in payload.get("modes") or [] if str(item)]
                 community_ids = (
                     await db.execute(
                         select(Listing.community_id)
@@ -131,12 +133,21 @@ async def process_once() -> bool:
                         .limit(count)
                     )
                 ).scalars().all()
-                enrich = await enrich_communities(db, list(community_ids))
+                enrich = await enrich_communities(
+                    db, list(community_ids), buckets=buckets or None
+                )
                 rescore = await rescore_task(db, task)
                 result = {
                     "sampling": enrich,
                     "rescore": rescore,
-                    "note": "Phase 2: single sample only; p50/p90 pending",
+                    "buckets": buckets or [],
+                    "modes": modes or ["公交/地铁"],
+                    "note": (
+                        "SZMC 为时刻表最短耗时，不含实时拥堵；"
+                        "同一 OD 的 4 个时段结果相同。"
+                        if "公交/地铁" in (modes or ["公交/地铁"])
+                        else "仅支持公交/地铁（SZMC）；其他方式未采样。"
+                    ),
                 }
             else:
                 result = await run_task(

@@ -5,6 +5,7 @@ import type {
   AdminSettings,
   AuditLogEntry,
   CoverageData,
+  CrawlCoverage,
   QualityData,
 } from '../contracts'
 import { delay, mockData } from './data'
@@ -242,6 +243,76 @@ const demoAudit: AuditLogEntry[] = [
 
 let currentSettings = { ...defaultSettings }
 
+const mockCrawlCoverage: CrawlCoverage = {
+  task_id: 1,
+  task_name: '贝壳 5 号线',
+  line: 'li110460696',
+  shard_cursor: 3,
+  shards: [
+    {
+      condition: 'li110460696s100021264',
+      station: '赤湾',
+      scope: 'line:li110460696s100021264',
+      listings: 28,
+      complete: true,
+      last_run: {
+        id: 31,
+        status: 'done',
+        started_at: '2026-11-04T01:00:00+08:00',
+        finished_at: '2026-11-04T01:00:40+08:00',
+        pages: 1,
+        fetched: 28,
+        total: 28,
+        duplicates: 0,
+        suspect_skipped: false,
+      },
+    },
+    {
+      condition: 'li110460696s24000001333516',
+      station: '荔湾',
+      scope: 'line:li110460696s24000001333516',
+      listings: 116,
+      complete: true,
+      last_run: {
+        id: 30,
+        status: 'done',
+        started_at: '2026-11-04T00:50:00+08:00',
+        finished_at: '2026-11-04T00:52:00+08:00',
+        pages: 4,
+        fetched: 116,
+        total: 116,
+        duplicates: 2,
+        suspect_skipped: false,
+      },
+    },
+    {
+      condition: 'li110460696s24000001333677',
+      station: '铁路公园',
+      scope: 'line:li110460696s24000001333677',
+      listings: 50,
+      complete: false,
+      last_run: {
+        id: 29,
+        status: 'done',
+        started_at: '2026-11-04T00:40:00+08:00',
+        finished_at: '2026-11-04T00:41:00+08:00',
+        pages: 1,
+        fetched: 30,
+        total: 50,
+        duplicates: 4,
+        suspect_skipped: true,
+      },
+    },
+  ],
+  summary: {
+    shards: 3,
+    listings: 194,
+    complete: 2,
+    scanned: 3,
+    last_scan_at: '2026-11-04T01:00:00+08:00',
+  },
+}
+
 export const mockAdminService: AdminService = {
   async overview() {
     await delay(160)
@@ -254,6 +325,10 @@ export const mockAdminService: AdminService = {
   async coverage() {
     await delay(160)
     return mockCoverage
+  },
+  async crawlCoverage() {
+    await delay(120)
+    return mockCrawlCoverage
   },
   async quality() {
     await delay(160)

@@ -81,6 +81,25 @@
 - 实测对话：`deepseek-ai/DeepSeek-V4.1-Flash-1017`，4.3–4.5s，tokens 745/513，fallback=false；Provider 用量 3/2000（含测试）。
 - 测试：`57 passed`、ruff 全绿、前端构建通过；provider 7 个；登录页、管理端、用户端、监控抽屉均用 Playwright 验证。
 
+## P0 收口（2026-11-04）
+
+已完成（代码 + 本地检查）：
+
+- **W1 分片覆盖**：`python -m app.cli shards --line 5号线 --probe` 生成/校验 `li110460696s<站点id>` 分片；`apply-shards --task-id 1 --line 5号线` 写入任务 filters 并把快/慢扫设为 10/180 分钟；scheduler 慢扫每次轮转一个站点分片，`/api/admin/crawl-coverage` + 管理端「采集任务」页显示每站已抓/total/库内/完整状态。
+- **W2 通勤 p50/p90**：迁移 `a1b2c3d4e5f6` 给 `commute_samples` 加 `depart_bucket/direction`；enrich/sampling 按 4 时段采样，评分用 p50，详情显示 p50/p90/样本数；管理端通勤页改 SZMC 零额度口径。
+- **W3 详情/台账**：详情抽屉接 `/api/listings/{id}`（真实评分拆解、价格快照、通勤、外卖、检查）；新增 `GET /api/listings/watchlist`、`GET /api/listings/watchlist/export.csv`；用户端「看房清单」抽屉支持状态流转、检查项、备注、照片链接、CSV。
+- 测试：`pytest -q` 82 passed；`ruff check app tests` 全绿；`npm run build` 通过；`alembic heads` = `a1b2c3d4e5f6`。
+- UI 证据：`docs/evidence/p0-ui/`（before 来自 main，after 来自当前分支；两边都用同一本地 mock API，非生产数据）。
+
+生产执行（agent 没有生产库权限，未执行）：
+
+1. `cd backend && .venv/bin/alembic upgrade head`（操作员执行迁移）。
+2. `.venv/bin/python -m app.cli apply-shards --task-id 1 --line 5号线`
+3. 需要时在 `/admin/commute` 提交 Top 候选采样，或 `.venv/bin/python -m app.cli rescore --task-id 1 --limit 2000` 让旧房源写入 p50/components。
+4. 等慢扫轮转完 37 个分片后看 `/admin/tasks` 的覆盖看板；覆盖率 ≥60% 是数据验收，不在本次代码交付内。
+
+注意：SZMC `MinTimeJson` 无出发时间参数，4 时段结果相同（`static=true`），p90 不是实时拥堵；详情/清单不要写成“实时实测”。
+
 ## 待办（按优先级）
 
 1. **Agent 工具运行时 + 护栏**：LLM tool calling、白名单、参数校验、PII/prompt injection、预算硬停、trace/eval。
@@ -106,6 +125,7 @@ cd backend
 .venv/bin/python -m app.cli list-users
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --sort newest --line li110460696 --transport api
 .venv/bin/python -m app.cli crawl --task-id 1 --pages 1 --transport cdp   # 兜底，需先过验证码
+.venv/bin/python -m app.cli shards --line 5号线 --stations 20 --probe   # 站点分片 total/去重校验
 .venv/bin/python -m app.cli enrich --task-id 1 --limit 50
 .venv/bin/python -m app.cli rescore --task-id 1 --limit 2000
 .venv/bin/python -m app.cli digest --dry-run

@@ -1,6 +1,8 @@
 import argparse
 import asyncio
 import getpass
+import json
+import sys
 
 from sqlalchemy import func, select, text
 
@@ -13,6 +15,15 @@ from app.services.digest_service import send_digest
 from app.services.enrich_service import enrich_task, rescore_task
 from app.services.seed_service import seed
 from app.services.settings_service import set_commute_destination
+from app.services.shard_service import (
+    apply_shard_plan,
+    crawl_commands,
+    fetch_line_total,
+    normalize_page_size,
+    probe_shards,
+)
+from app.sources.base import SourceError
+from app.sources.beike_filters import build_line_shards, fetch_filter_config
 
 
 async def cmd_seed() -> None:
@@ -213,6 +224,176 @@ async def cmd_probe(args) -> None:
     print(result)
 
 
+def _pct(value: float | None) -> str:
+    return "—" if value is None else f"{value * 100:.1f}%"
+
+
+def _print_shard_report(output: dict) -> None:
+    line = output["line"]
+    print(
+        f"{line['name']}（{line['condition']}）· 站点 {output['stations']}/"
+        f"{output['total_stations']}"
+    )
+    summary = output.get("summary")
+    sampled = output["stations"] < output["total_stations"]
+    if summary:
+        print(f"{'站点':<10}{'total':>7}{'页数':>6}{'已抓':>6}{'新增':>6}{'重复':>6}  状态")
+        for item in output["shards"]:
+            status = "完整" if item["complete"] else (item["missing_reason"] or "未完成")
+            total = item["total"] if item["total"] is not None else "—"
+            print(
+                f"{item['station']:<10}{total:>7}{item['pages']:>6}{item['fetched']:>6}"
+                f"{item['unique']:>6}{item['overlap']:>6}  {status}"
+            )
+        print(
+            f"汇总：scope total={summary['scope_total']}，已抓={summary['fetched']}，"
+            f"去重后={summary['unique']}，重复={summary['duplicates']}，"
+            f"{'抽样' if sampled else ''}覆盖={_pct(summary['coverage_vs_scope'])}"
+        )
+        line_total = summary["line_total"]
+        if line_total is not None:
+            print(
+                f"线路 total={line_total}，分片合计={summary['scope_total']}，"
+                f"{'抽样' if sampled else '线路'}覆盖率={_pct(summary['coverage_vs_line'])}"
+            )
+            if summary["scope_total"] > line_total:
+                print(
+                    "注意：站点条件会重叠，分片合计大于线路 total；"
+                    "真实覆盖以线路覆盖率为准。"
+                )
+        print(
+            f"完整分片 {summary['complete_shards']}/{summary['shards']}，"
+            f"预计总页数 {summary['expected_pages']}"
+        )
+    else:
+        for item in output["shards"]:
+            print(f"{item['name']:<10}{item['condition']}")
+    print("逐站采集命令（--full-scan 只用于已确认完整的分片）：")
+    for item in output["commands"]:
+        print(f"  {item['command']}")
+
+
+def _print_probe_progress(item: dict) -> None:
+    total = item["total"] if item["total"] is not None else "—"
+    status = "完整" if item["complete"] else (item["missing_reason"] or "未完成")
+    print(
+        f"[probe] {item['station']} total={total} pages={item['pages']} "
+        f"fetched={item['fetched']} unique={item['unique']} {status}",
+        file=sys.stderr,
+    )
+
+
+def _shard_error(exc: Exception, as_json: bool) -> None:
+    payload = {"error": str(exc)}
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(payload)
+
+
+async def cmd_shards(args) -> None:
+    try:
+        config = await fetch_filter_config(args.city)
+        plan = build_line_shards(config, args.line)
+    except SourceError as exc:
+        _shard_error(exc, args.json)
+        return
+
+    shards = plan["shards"]
+    if args.stations > 0:
+        shards = shards[: args.stations]
+    page_size = normalize_page_size(args.page_size)
+    summary = None
+    probe_results = None
+    if args.probe:
+        try:
+            line_total = await fetch_line_total(
+                plan["line_condition"], city_code=args.city, sort=args.sort
+            )
+            report = await probe_shards(
+                plan,
+                shards,
+                city_code=args.city,
+                pages=args.pages,
+                sort=args.sort,
+                page_size=page_size,
+                line_total=line_total,
+                on_progress=_print_probe_progress,
+            )
+        except SourceError as exc:
+            _shard_error(exc, args.json)
+            return
+        summary = report["summary"]
+        probe_results = report["shards"]
+
+    output = {
+        "line": {
+            "id": plan["line_id"],
+            "name": plan["line_name"],
+            "condition": plan["line_condition"],
+        },
+        "stations": len(shards),
+        "total_stations": len(plan["shards"]),
+        "summary": summary,
+        "shards": probe_results or shards,
+        "commands": crawl_commands(
+            shards,
+            task_id=args.task_id,
+            page_size=page_size,
+            results=probe_results,
+        ),
+    }
+    if args.json:
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+    else:
+        _print_shard_report(output)
+
+
+async def cmd_apply_shards(args) -> None:
+    try:
+        config = await fetch_filter_config(args.city)
+        plan = build_line_shards(config, args.line)
+    except SourceError as exc:
+        print({"error": str(exc)})
+        return
+    conditions = [item["condition"] for item in plan["shards"]]
+    if args.stations > 0:
+        conditions = conditions[: args.stations]
+    async with SessionLocal() as db:
+        task = await db.get(Task, args.task_id)
+        if task is None:
+            print({"error": f"task {args.task_id} not found"})
+            return
+        filters = dict(task.filters or {})
+        schedule = dict(task.schedule or {})
+        if args.clear:
+            for key in ("shard_conditions", "shard_cursor", "shard_line", "shard_labels"):
+                filters.pop(key, None)
+        else:
+            labels = [
+                item["name"] for item in plan["shards"][: args.stations or None]
+            ]
+            filters = apply_shard_plan(
+                filters, conditions, plan["line_condition"], labels=labels
+            )
+            schedule.update(
+                {"fast_minutes": args.fast_minutes, "slow_minutes": args.slow_minutes}
+            )
+        task.filters = filters
+        task.schedule = schedule
+        await db.commit()
+    print(
+        {
+            "task_id": args.task_id,
+            "line": plan["line_name"],
+            "cleared": args.clear,
+            "shard_conditions": len(conditions) if not args.clear else 0,
+            "fast_minutes": schedule.get("fast_minutes"),
+            "slow_minutes": schedule.get("slow_minutes"),
+        }
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rentradar")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -261,9 +442,49 @@ def main() -> None:
     bootstrap.add_argument("--username", default="admin")
     bootstrap.add_argument("--password")
     sub.add_parser("list-users", help="list login users")
+    shards = sub.add_parser(
+        "shards", help="generate and probe per-station conditions for a subway line"
+    )
+    shards.add_argument(
+        "--line", required=True, help="line id/name/pinyin, e.g. 5号线 or li110460696"
+    )
+    shards.add_argument("--city", default="sz")
+    shards.add_argument("--stations", type=int, default=0, help="first N stations only; 0 = all")
+    shards.add_argument(
+        "--pages", type=int, default=1, help="pages per shard; 0 = cover each total"
+    )
+    shards.add_argument("--page-size", type=int, default=30, help="App API page size (max 30)")
+    shards.add_argument("--sort", choices=["default", "newest"], default="newest")
+    shards.add_argument("--task-id", type=int, default=1, help="task id used in generated commands")
+    shards.add_argument(
+        "--probe", action="store_true", help="call the App API to measure totals and de-duplication"
+    )
+    shards.add_argument("--json", action="store_true")
+    apply_shards = sub.add_parser(
+        "apply-shards", help="store a station-shard plan on a crawl task"
+    )
+    apply_shards.add_argument("--task-id", type=int, required=True)
+    apply_shards.add_argument("--line", required=True, help="line id/name/pinyin, e.g. 5号线")
+    apply_shards.add_argument("--city", default="sz")
+    apply_shards.add_argument("--stations", type=int, default=0, help="first N stations; 0 = all")
+    apply_shards.add_argument(
+        "--fast-minutes", type=int, default=10, help="fast crawl interval after applying"
+    )
+    apply_shards.add_argument(
+        "--slow-minutes", type=int, default=180, help="slow crawl interval after applying"
+    )
+    apply_shards.add_argument(
+        "--clear", action="store_true", help="remove the shard plan instead of applying it"
+    )
     args = parser.parse_args()
     if args.command == "probe" and not (args.community_id or args.listing_id):
         parser.error("probe requires --community-id or --listing-id")
+    if args.command == "shards" and (args.stations < 0 or args.pages < 0):
+        parser.error("shards requires --stations >= 0 and --pages >= 0")
+    if args.command == "apply-shards" and (
+        args.stations < 0 or args.fast_minutes < 1 or args.slow_minutes < 1
+    ):
+        parser.error("apply-shards requires --stations >= 0 and positive intervals")
     if args.command == "seed":
         asyncio.run(cmd_seed())
     elif args.command == "check":
@@ -280,6 +501,10 @@ def main() -> None:
         asyncio.run(cmd_digest(args))
     elif args.command == "probe":
         asyncio.run(cmd_probe(args))
+    elif args.command == "shards":
+        asyncio.run(cmd_shards(args))
+    elif args.command == "apply-shards":
+        asyncio.run(cmd_apply_shards(args))
     elif args.command == "create-user":
         asyncio.run(cmd_create_user(args))
     elif args.command == "set-password":

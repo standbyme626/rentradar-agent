@@ -9,6 +9,7 @@ from app.core.db import SessionLocal
 from app.core.logging import configure_logging, get_logger
 from app.models import AgentMonitor, Job, JobStatus, Run, Task
 from app.services.settings_service import get_admin_settings
+from app.services.shard_service import next_shard
 
 configure_logging()
 log = get_logger("scheduler")
@@ -78,6 +79,7 @@ async def tick() -> dict:
             line = str(filters.get("line") or "")
             fast_pages = int(filters.get("fast_pages", 1))
             slow_pages = int(filters.get("slow_pages", 6))
+            shard_line, next_filters = next_shard(filters)
             fast_id = await _enqueue(
                 db,
                 task,
@@ -101,14 +103,20 @@ async def tick() -> dict:
                     "pages": slow_pages,
                     "sort": "newest",
                     "district": district,
-                    "line": line,
+                    "line": shard_line or line,
                     "full_scan": True,
                     "notify": False,
+                    "shard": bool(shard_line),
                 },
             )
             if fast_id:
                 created[f"fast_{task.id}"] = fast_id
             if slow_id:
+                if shard_line:
+                    # Advance only when the shard job was actually queued; an
+                    # active slow job must keep the cursor stable.
+                    task.filters = next_filters
+                    created[f"shard_{task.id}"] = shard_line
                 created[f"slow_{task.id}"] = slow_id
 
         now = datetime.now(TZ)

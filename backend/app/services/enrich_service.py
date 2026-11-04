@@ -6,19 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.integrations.base import Capability, ProviderError, ProviderQuotaExceeded
-from app.models import City, Community, CommuteSample, Listing, PoiCache, Source, Task
-from app.services import provider_runtime
+from app.models import City, Community, Listing, PoiCache, Source, Task
+from app.services import commute_service, provider_runtime
 from app.services.score_service import score_listing
-from app.services.settings_service import (
-    destination_key,
-    get_admin_settings,
-    get_commute_destination,
-)
+from app.services.settings_service import get_admin_settings, get_commute_destination
 
 log = get_logger("enrich")
 
 POI_TTL_DAYS = 30
-COMMUTE_TTL_DAYS = 7
 DAILY_TYPES = "060200|060300|060400"
 
 
@@ -134,71 +129,6 @@ async def _ensure_poi(db: AsyncSession, community: Community) -> PoiCache | None
     return cache
 
 
-async def _ensure_commute(
-    db: AsyncSession, community: Community, city: City, destination: dict | None
-) -> None:
-    if not destination or community.lng is None or community.lat is None:
-        return
-    key = destination_key(destination)
-    if key is None:
-        return
-    latest = await db.scalar(
-        select(CommuteSample)
-        .where(CommuteSample.community_id == community.id, CommuteSample.destination_key == key)
-        .order_by(CommuteSample.fetched_at.desc())
-        .limit(1)
-    )
-    if latest is not None:
-        fetched = latest.fetched_at
-        if fetched.tzinfo is None:
-            fetched = fetched.replace(tzinfo=UTC)
-        age = datetime.now(UTC) - fetched
-        # 高德样本逐步替换为深圳地铁官方；旧样本超过 1 天后优先重采
-        if latest.provider == "szmc":
-            if age < timedelta(days=COMMUTE_TTL_DAYS):
-                return
-        elif age < timedelta(days=1):
-            return
-    try:
-        route = await provider_runtime.invoke(
-            db,
-            Capability.route_transit,
-            "transit",
-            f"{community.lng},{community.lat}",
-            f"{destination['lng']},{destination['lat']}",
-            city_code(city.code),
-            cap_key="amapMonthlyCap",
-        )
-    except ProviderQuotaExceeded:
-        raise
-    except ProviderError as exc:
-        log.warning("commute_failed", community=community.name, error=str(exc))
-        return
-    if route is None:
-        return
-    db.add(
-        CommuteSample(
-            community_id=community.id,
-            destination_key=key,
-            mode=str(route.get("mode") or "transit"),
-            duration_s=route["duration_s"],
-            distance_m=route.get("distance_m"),
-            transfers=route.get("transfers"),
-            provider=str(route.get("provider") or "amap"),
-            raw={
-                "destination": destination.get("address"),
-                "walk_min": route.get("walk_min"),
-                **(route.get("raw") or {}),
-            },
-        )
-    )
-    await db.flush()
-
-
-def city_code(code: str) -> str:
-    return {"sz": "0755", "sh": "021", "bj": "010", "gz": "020"}.get(code, "0755")
-
-
 async def enrich_task(db: AsyncSession, task: Task, limit: int = 100) -> dict:
     admin_settings = await get_admin_settings(db)
     limit = max(1, min(limit, int(admin_settings.get("batchCap") or 10)))
@@ -229,6 +159,7 @@ async def enrich_task(db: AsyncSession, task: Task, limit: int = 100) -> dict:
         "geocoded": 0,
         "poi": 0,
         "commute": 0,
+        "commute_communities": 0,
         "destination": bool(destination),
     }
     for community_id in community_ids:
@@ -243,15 +174,10 @@ async def enrich_task(db: AsyncSession, task: Task, limit: int = 100) -> dict:
         cache = await _ensure_poi(db, community)
         if cache is not None:
             stats["poi"] += 1
-        before_commute = await db.scalar(
-            select(CommuteSample.id).where(CommuteSample.community_id == community.id).limit(1)
-        )
-        await _ensure_commute(db, community, city, destination)
-        after_commute = await db.scalar(
-            select(CommuteSample.id).where(CommuteSample.community_id == community.id).limit(1)
-        )
-        if after_commute and not before_commute:
-            stats["commute"] += 1
+        sampled = await commute_service.ensure_commute(db, community, city, destination)
+        stats["commute"] += int(sampled.get("sampled") or 0)
+        if sampled.get("sampled"):
+            stats["commute_communities"] += 1
         stats["communities"] += 1
         await db.commit()
         log.info("enrich_community", community=community.name, **stats)
@@ -289,16 +215,21 @@ async def rescore_task(db: AsyncSession, task: Task, limit: int = 2000) -> dict:
 
 
 async def enrich_communities(
-    db: AsyncSession, community_ids: list[int], limit: int | None = None
+    db: AsyncSession,
+    community_ids: list[int],
+    limit: int | None = None,
+    *,
+    buckets: list[str] | tuple[str, ...] | None = None,
 ) -> dict:
     destination = await get_commute_destination(db)
-    key = destination_key(destination)
     stats = {
         "communities": 0,
         "geocoded": 0,
         "poi": 0,
         "commute": 0,
+        "commute_communities": 0,
         "destination": bool(destination),
+        "buckets": list(buckets or commute_service.COMMUTE_BUCKETS),
     }
     ids = community_ids[:limit] if limit else community_ids
     for community_id in ids:
@@ -315,29 +246,12 @@ async def enrich_communities(
             stats["geocoded"] += 1
         if await _ensure_poi(db, community) is not None:
             stats["poi"] += 1
-        before_commute = None
-        if key:
-            before_commute = await db.scalar(
-                select(CommuteSample.id)
-                .where(
-                    CommuteSample.community_id == community.id,
-                    CommuteSample.destination_key == key,
-                )
-                .limit(1)
-            )
-        await _ensure_commute(db, community, city, destination)
-        after_commute = None
-        if key:
-            after_commute = await db.scalar(
-                select(CommuteSample.id)
-                .where(
-                    CommuteSample.community_id == community.id,
-                    CommuteSample.destination_key == key,
-                )
-                .limit(1)
-            )
-        if after_commute and not before_commute:
-            stats["commute"] += 1
+        sampled = await commute_service.ensure_commute(
+            db, community, city, destination, buckets=buckets
+        )
+        stats["commute"] += int(sampled.get("sampled") or 0)
+        if sampled.get("sampled"):
+            stats["commute_communities"] += 1
         stats["communities"] += 1
         await db.commit()
         log.info("enrich_community", community=community.name, **stats)

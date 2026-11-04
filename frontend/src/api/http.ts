@@ -82,6 +82,18 @@ async function fetchWithAuth(
   return response
 }
 
+export async function requestBlob(path: string, init: RequestInit = {}, timeout = 20000): Promise<Blob> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeout)
+  try {
+    const response = await fetchWithAuth(path, { ...init, method: init.method ?? 'GET' }, controller.signal)
+    if (!response.ok) throw await parseError(response)
+    return await response.blob()
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 export async function request<T>(path: string, init: RequestInit = {}, timeout = 15000): Promise<T> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeout)

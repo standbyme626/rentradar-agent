@@ -59,12 +59,46 @@ class ListingOut(ORMModel):
     last_seen_at: datetime
 
 
+class CommuteStatsOut(BaseModel):
+    samples: int = 0
+    buckets: list[str] = Field(default_factory=list)
+    bucket_count: int = 0
+    multi_bucket: bool = False
+    p50_min: float | None = None
+    p90_min: float | None = None
+    static: bool = True
+    provider: str | None = None
+    mode: str | None = None
+    direction: str = "community_to_destination"
+    direction_label: str = "小区→公司"
+    transfers: int | None = None
+    walk_min: float | None = None
+    fetched_at: datetime | None = None
+    destination: str | None = None
+    example: bool = False
+
+
+
+
+class InspectionUpdate(BaseModel):
+    items: dict[str, bool] = Field(default_factory=dict)
+    note: str | None = None
+    photos: list[str] = Field(default_factory=list)
+
+
+class InspectionOut(InspectionUpdate):
+    updated_at: datetime | None = None
+
 class ListingDetail(ListingOut):
     score_reasons: dict = Field(default_factory=dict)
     snapshots: list[SnapshotOut] = Field(default_factory=list)
     events: list[EventOut] = Field(default_factory=list)
     delivery_probes: list[DeliveryProbeOut] = Field(default_factory=list)
     watch_state: str | None = None
+    watch_note: str | None = None
+    watch_updated_at: datetime | None = None
+    inspection: InspectionOut | None = None
+    commute_stats: CommuteStatsOut | None = None
 
 
 class ListingPage(ORMModel):
@@ -162,12 +196,3 @@ class CommuteUpdate(BaseModel):
 class EnrichResponse(BaseModel):
     jobs: list[int]
 
-
-class InspectionUpdate(BaseModel):
-    items: dict[str, bool] = Field(default_factory=dict)
-    note: str | None = None
-    photos: list[str] = Field(default_factory=list)
-
-
-class InspectionOut(InspectionUpdate):
-    updated_at: datetime | None = None

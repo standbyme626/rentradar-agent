@@ -36,6 +36,13 @@ async def coverage(db: AsyncSession = Depends(get_db)) -> dict:
     return await admin_service.coverage(db)
 
 
+@router.get("/crawl-coverage")
+async def crawl_coverage(
+    task_id: int | None = None, db: AsyncSession = Depends(get_db)
+) -> dict:
+    return await admin_service.crawl_coverage(db, task_id)
+
+
 @router.get("/quality")
 async def quality(db: AsyncSession = Depends(get_db)) -> dict:
     return await admin_service.quality(db)

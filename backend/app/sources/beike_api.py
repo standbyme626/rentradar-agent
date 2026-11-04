@@ -233,6 +233,10 @@ class BeikeAPIFetcher:
     async def close(self) -> None:
         await self._client.aclose()
 
+    def reset_condition(self) -> None:
+        """Forget the page cursor before switching to another list condition."""
+        self._feed_query_id = ""
+
     async def _pace(self) -> None:
         if not self._last_fetch:
             return

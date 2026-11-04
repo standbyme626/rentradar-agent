@@ -5,7 +5,8 @@ from statistics import median
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import CommuteSample, Listing, ListingStatus, PoiCache
+from app.models import Listing, ListingStatus, PoiCache
+from app.services import commute_service
 from app.services.settings_service import destination_key, get_commute_destination
 
 
@@ -105,37 +106,38 @@ async def score_listing(
     reasons["price"] = price_reason
     total += 35 * price_score
 
-    # 通勤：公司地址 → 小区，单次公交采样
+    # 通勤：小区 → 公司，多时段样本取 p50
     commute_score = 0.5
-    commute_reason = "待接入高德通勤（估算）"
+    commute_reason = "通勤样本缺失（估算）"
     destination = await get_commute_destination(db)
     if listing.community_id and destination:
         key = destination_key(destination)
-        sample = await db.scalar(
-            select(CommuteSample)
-            .where(
-                CommuteSample.community_id == listing.community_id,
-                CommuteSample.destination_key == key,
+        stats = (
+            await commute_service.community_stats(
+                db, listing.community_id, key, destination=destination
             )
-            .order_by(CommuteSample.fetched_at.desc())
-            .limit(1)
+            if key
+            else None
         )
-        if sample is not None:
-            minutes = sample.duration_s / 60
+        if stats is not None:
+            minutes = stats["p50_min"]
             if minutes <= 30:
                 commute_score = 1.0
             elif minutes >= 60:
                 commute_score = 0.0
             else:
                 commute_score = (60 - minutes) / 30
-            label = "地铁+步行" if sample.mode == "metro" else "公共交通"
-            commute_reason = f"{label} {minutes:.0f} 分钟（单次采样）"
-            if sample.provider == "szmc":
+            label = "地铁+步行" if stats["mode"] == "metro" else "公共交通"
+            commute_reason = f"{label} p50 {minutes:.0f} 分钟"
+            if stats.get("p90_min") is not None and stats.get("multi_bucket"):
+                commute_reason += f" / p90 {stats['p90_min']:.0f} 分钟"
+            commute_reason += f"（{stats['samples']} 个样本/{stats['bucket_count']} 个时段）"
+            if stats.get("provider") == "szmc":
                 commute_reason += " · 深圳地铁官方"
+            if stats.get("static"):
+                commute_reason += " · 时刻表估算，无时段波动"
             if destination.get("example"):
-                commute_reason += " · 示例起点，请修改"
-        else:
-            commute_reason = "通勤样本缺失（估算）"
+                commute_reason += " · 示例目的地址，请修改"
     reasons["commute"] = commute_reason
     total += 25 * commute_score
 
@@ -206,5 +208,22 @@ async def score_listing(
         risk_notes.append("面积小于 25㎡")
         risk_penalty += 5
     reasons["risk"] = risk_notes
+    reasons["components"] = {
+        "price": round(35 * price_score, 1),
+        "commute": round(25 * commute_score, 1),
+        "condition": round(15 * condition, 1),
+        "convenience": round(10 * convenience_score, 1),
+        "reputation": 5.0,
+        "freshness": round(5 * freshness, 1),
+        "risk": -risk_penalty,
+    }
+    reasons["weights"] = {
+        "price": 35,
+        "commute": 25,
+        "condition": 15,
+        "convenience": 10,
+        "reputation": 10,
+        "freshness": 5,
+    }
     total = max(0, min(100, round(total - risk_penalty)))
     return total, reasons

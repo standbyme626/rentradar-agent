@@ -119,6 +119,30 @@ async def test_fetcher_passes_feed_query_id_between_pages():
     assert seen[1]["offset"] == "30"
 
 
+async def test_fetcher_reset_condition_drops_feed_cursor():
+    payload = load_payload()
+    payload["data"]["feed_query_id"] = "feed-1"
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json=payload)
+
+    fetcher = beike_api.BeikeAPIFetcher(
+        transport=httpx.MockTransport(handler), page_interval=(0, 0)
+    )
+    try:
+        await fetcher.fetch_page(1, line="li110460696")
+        fetcher.reset_condition()
+        await fetcher.fetch_page(1, line="li110460696s100021264")
+    finally:
+        await fetcher.close()
+
+    assert seen[0]["feed_query_id"] == ""
+    assert seen[1]["feed_query_id"] == ""
+    assert seen[1]["condition"] == "li110460696s100021264/rco11"
+
+
 async def test_fetcher_raises_captcha_on_403():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(403, text="verify")

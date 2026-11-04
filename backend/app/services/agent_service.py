@@ -1,7 +1,6 @@
 import re
 import time
 import uuid
-from collections import Counter
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
@@ -13,13 +12,12 @@ from app.models import (
     AgentMonitor,
     AgentSession,
     City,
-    CommuteSample,
     Listing,
     ListingStatus,
     PoiCache,
     Source,
 )
-from app.services import listing_service, llm_service
+from app.services import commute_service, listing_service, llm_service
 from app.services.settings_service import (
     destination_key,
     get_admin_settings,
@@ -174,21 +172,12 @@ def _ui_conditions(conditions: dict) -> dict:
     }
 
 
-async def _latest_commute(db: AsyncSession) -> tuple[dict[int, int], Counter[int]]:
+async def _latest_commute(db: AsyncSession) -> dict[int, dict]:
     destination = await get_commute_destination(db)
     key = destination_key(destination)
-    stmt = select(
-        CommuteSample.community_id, CommuteSample.duration_s, CommuteSample.fetched_at
-    ).order_by(CommuteSample.community_id, CommuteSample.fetched_at.desc())
-    if key:
-        stmt = stmt.where(CommuteSample.destination_key == key)
-    rows = (await db.execute(stmt)).all()
-    latest: dict[int, int] = {}
-    counts: Counter[int] = Counter()
-    for community_id, duration_s, _ in rows:
-        counts[community_id] += 1
-        latest.setdefault(community_id, duration_s)
-    return latest, counts
+    if key is None:
+        return {}
+    return await commute_service.bulk_stats(db, key, destination=destination)
 
 
 async def _query_cards(
@@ -226,18 +215,22 @@ async def _query_cards(
         stmt = stmt.where(Listing.orientation.ilike("%南%"))
     stmt = stmt.order_by(Listing.score.desc().nullslast(), Listing.id.desc()).limit(100)
     rows = (await db.execute(stmt)).all()
-    latest, samples = await _latest_commute(db)
+    commute = await _latest_commute(db)
     max_commute = conditions.get("commute")
     cards = []
     for listing, source_code, city_code, poi in rows:
-        duration = latest.get(listing.community_id)
-        minutes = round(duration / 60) if duration else None
+        stats = commute.get(listing.community_id)
+        minutes = round(stats["p50_min"]) if stats else None
         if max_commute is not None and (minutes is None or minutes > int(max_commute)):
             continue
         item = listing_service._listing_dict(listing, source_code, city_code)
         item["score_reasons"] = listing.score_reasons or {}
         item["commute_min"] = minutes
-        item["samples"] = samples.get(listing.community_id, 0)
+        item["commute_p50"] = stats["p50_min"] if stats else None
+        item["commute_p90"] = stats["p90_min"] if stats else None
+        item["commute_buckets"] = stats["bucket_count"] if stats else 0
+        item["commute_static"] = stats["static"] if stats else None
+        item["samples"] = stats["samples"] if stats else 0
         item["dining_count"] = poi.dining_count if poi else None
         item["daily_count"] = poi.daily_count if poi else None
         item["nightlife_count"] = poi.nightlife_count if poi else None

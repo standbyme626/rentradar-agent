@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import {
   ArrowRight,
   Bell,
+  ClipboardList,
   Clock3,
   History,
   Home,
@@ -20,6 +21,7 @@ import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { useWatchlistStore } from '@/stores/watchlist'
 import { mockData } from '@/api/mockData'
 import { agentApi } from '@/api/services/agent'
 import type { Listing } from '@/api/types'
@@ -31,10 +33,12 @@ import ComparisonTable from './ComparisonTable.vue'
 import MapPanel from './MapPanel.vue'
 import ConditionSheet from './ConditionSheet.vue'
 import ListingDetailDrawer from './ListingDetailDrawer.vue'
+import WatchlistDrawer from './WatchlistDrawer.vue'
 
 const router = useRouter()
 const store = useChatStore()
 const auth = useAuthStore()
+const watchlist = useWatchlistStore()
 const {
   phase,
   messages,
@@ -42,6 +46,7 @@ const {
   conditions,
   activeTab,
   detail,
+  detailLoading,
   sheetOpen,
   loading,
   amapLabel,
@@ -180,6 +185,19 @@ function openDetail(listing: Listing) {
   store.openDetail(listing)
 }
 
+function openDetailById(id: number) {
+  store.openDetailById(id)
+}
+
+function setDetailState(state: string, note: string | null) {
+  void store.setDetailState(state, note)
+  void watchlist.load()
+}
+
+async function saveDetailInspection(payload: Parameters<typeof store.saveDetailInspection>[0]) {
+  if (await store.saveDetailInspection(payload)) void watchlist.load()
+}
+
 function compare(listing: Listing) {
   store.toggleCompare(listing)
   toast(compareIds.value.has(listing.id) ? `已加入对比：${listing.community_name}` : `已移出对比：${listing.community_name}`)
@@ -234,6 +252,13 @@ function removeCondition(label: string) {
         </button>
         <button class="btn-ghost btn-sm" title="我的监控" @click="store.openMonitors()">
           <Bell :size="16" />
+        </button>
+        <button class="relative btn-ghost btn-sm" title="看房清单" @click="watchlist.openLedger()">
+          <ClipboardList :size="16" />
+          <span
+            v-if="watchlist.active.length"
+            class="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-forest px-1 text-[9px] font-semibold text-white"
+          >{{ watchlist.active.length }}</span>
         </button>
         <span class="hidden max-w-[110px] truncate text-[10.5px] text-muted sm:inline">
           {{ auth.displayName || '—' }}
@@ -420,10 +445,16 @@ function removeCondition(label: string) {
     <ConditionSheet :open="sheetOpen" @close="store.closeSheet()" @apply="applyConditions" />
     <ListingDetailDrawer
       :listing="detail"
+      :loading="detailLoading"
       @close="store.closeDetail()"
       @compare="compare"
       @save="save"
+      @state="setDetailState"
+      @inspection="saveDetailInspection"
+      @refresh="store.refreshDetail()"
     />
+
+    <WatchlistDrawer @open-detail="openDetailById" />
 
     <AppDrawer
       :open="historyOpen"

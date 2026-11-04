@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { CrawlCoverage } from '@/api/contracts'
 import { adminApi } from '@/api/services/admin'
 import { useLazyData } from '@/composables/useLazyData'
 import { useToast } from '@/composables/useToast'
@@ -10,12 +11,48 @@ const { toast } = useToast()
 const helpOpen = ref(false)
 const busy = ref(false)
 const { data: items, loading, error, reload } = useLazyData(() => adminApi.tasks(), tasksSnapshot)
+const emptyCoverage: CrawlCoverage = {
+  task_id: null,
+  task_name: null,
+  line: null,
+  shard_cursor: 0,
+  shards: [],
+  summary: { shards: 0, listings: 0, complete: 0, scanned: 0, last_scan_at: null },
+}
+const {
+  data: coverage,
+  loading: coverageLoading,
+  error: coverageError,
+  reload: reloadCoverage,
+} = useLazyData(() => adminApi.crawlCoverage(), emptyCoverage)
 const task1 = computed(() => items.value.find((item) => item.id === 1) ?? items.value[0])
 const task2 = computed(() => items.value.find((item) => item.id === 2) ?? items.value[1])
-const filtersText = computed(() => (task1.value ? JSON.stringify(task1.value.filters) : '{}'))
-const fastText = computed(() => `每 ${task1.value?.schedule?.fast_minutes ?? 30} 分钟 · 1 页`)
-const slowText = computed(() => `每 ${task1.value?.schedule?.slow_minutes ?? 360} 分钟 · 30 页`)
+const filtersText = computed(() => {
+  if (!task1.value) return '{}'
+  const text = JSON.stringify(task1.value.filters)
+  return text.length > 140 ? `${text.slice(0, 140)}…` : text
+})
+const fastText = computed(() => `每 ${task1.value?.schedule?.fast_minutes ?? 10} 分钟 · 1 页`)
+const slowText = computed(() => `每 ${task1.value?.schedule?.slow_minutes ?? 180} 分钟 · 分片轮转`)
 const transport = computed(() => String(task1.value?.filters?.transport ?? 'cdp'))
+const shardCount = computed(() => {
+  const conditions = task1.value?.filters?.shard_conditions
+  return Array.isArray(conditions) ? conditions.length : 0
+})
+const scopeText = computed(() =>
+  shardCount.value ? `shards=${shardCount.value}` : 'scope=line:li110460696',
+)
+const coverageTime = computed(() =>
+  coverage.value.summary.last_scan_at
+    ? new Date(coverage.value.summary.last_scan_at).toLocaleString('zh-CN', {
+        hour12: false,
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—',
+)
 
 async function runNow() {
   if (!task1.value || busy.value) return
@@ -58,7 +95,7 @@ async function runNow() {
         <div class="mt-3 flex flex-wrap gap-1.5">
           <span :class="task1?.enabled ? 'tag-green' : 'tag-coral'">{{ task1?.enabled ? 'enabled=true' : 'enabled=false' }}</span>
           <span class="tag-neutral">transport={{ transport }}</span>
-          <span class="tag-neutral">scope=line:li110460696</span>
+          <span class="tag-neutral">{{ scopeText }}</span>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
           <button class="btn-primary" :disabled="busy || !task1" @click="runNow">
@@ -80,6 +117,60 @@ async function runNow() {
         <div class="mt-3 flex flex-wrap gap-1.5"><span class="tag-neutral">robots 禁止</span><span class="tag-neutral">手动模式</span></div>
       </section>
     </div>
+
+    <section class="card mt-4 p-4">
+      <h3 class="panel-title">
+        5 号线分片覆盖
+        <span class="hint">
+          {{ coverage.summary.complete }}/{{ coverage.summary.shards }} 个分片完整 ·
+          库内 {{ coverage.summary.listings }} 套 · 最近 {{ coverageTime }}
+        </span>
+      </h3>
+      <div v-if="coverageLoading" class="mt-2 text-[10.5px] text-muted">覆盖数据加载中…</div>
+      <div v-else-if="coverageError" class="mt-2 text-[10.5px] text-coral">
+        {{ coverageError }}
+        <button class="ml-2 underline" @click="reloadCoverage">重试</button>
+      </div>
+      <div v-else-if="!coverage.shards.length" class="mt-2 rounded-xl border border-dashed border-line2 bg-paper2 px-3.5 py-3 text-[11px] text-muted">
+        任务尚未配置分片。运行 <code class="mono">python -m app.cli apply-shards --task-id 1 --line 5号线</code> 后，这里会按站点显示已抓/总数/完整状态。
+      </div>
+      <div v-else class="mt-2 max-h-[300px] overflow-auto rounded-xl border border-line">
+        <table class="w-full text-left text-[11.5px]">
+          <thead class="sticky top-0 border-b border-line bg-paper2 text-[9.5px] uppercase tracking-wide text-faint">
+            <tr>
+              <th class="px-3 py-2 font-semibold">站点</th>
+              <th class="px-3 py-2 font-semibold">已抓 / total</th>
+              <th class="px-3 py-2 font-semibold">库内</th>
+              <th class="px-3 py-2 font-semibold">最近状态</th>
+              <th class="px-3 py-2 font-semibold">完整</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="shard in coverage.shards" :key="shard.condition" class="border-b border-line last:border-0">
+              <td class="px-3 py-2 font-semibold">{{ shard.station }}</td>
+              <td class="px-3 py-2">
+                {{ shard.last_run?.fetched ?? '—' }} / {{ shard.last_run?.total ?? '—' }}
+                <span class="text-[9px] text-faint">({{ shard.last_run?.pages ?? 0 }} 页)</span>
+              </td>
+              <td class="px-3 py-2">{{ shard.listings }}</td>
+              <td class="px-3 py-2">
+                <span v-if="shard.last_run" :class="shard.last_run.status === 'done' ? 'tag-green' : 'tag-amber'">
+                  {{ shard.last_run.status }}
+                </span>
+                <span v-else class="tag-neutral">未扫描</span>
+                <span v-if="shard.last_run?.suspect_skipped" class="ml-1 text-[9px] text-amber">跳过 suspect</span>
+              </td>
+              <td class="px-3 py-2">
+                <span :class="shard.complete ? 'tag-green' : 'tag-amber'">{{ shard.complete ? '完整' : '未完成' }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-[10px] leading-5 text-faint">
+        分片轮转：慢扫每次只跑下一个站点分片（cursor {{ coverage.shard_cursor }}），在 {{ coverage.summary.scanned }}/{{ coverage.summary.shards }} 个分片留下运行记录；未完整抓取的分片不会做 suspect。
+      </p>
+    </section>
 
     <section class="card mt-4 p-4">
       <h3 class="panel-title">采集器行为 <span class="hint">当前主通道</span></h3>
