@@ -5,7 +5,12 @@ import time
 
 import httpx
 
+from app.core.config import settings
+from app.core.logging import get_logger
 from app.sources.base import CaptchaRequiredError, EmptyPageError, ListingDraft, SourceError
+
+log = get_logger("beike_api")
+PROXY_COOLDOWN_SECONDS = 300
 
 API_URL = "https://app.api.ke.com/Rentplat/v2/house/list"
 CITY_IDS = {"sz": "440300"}
@@ -39,6 +44,19 @@ HEADERS = {
     "Referer": "https://m.ke.com/",
 }
 CAPTCHA_MARKERS = ("验证", "captcha", "访问异常", "antibot")
+
+
+def parse_proxies(value: str | list[str] | None) -> list[str]:
+    """Parse a comma-separated proxy list, preserving order and de-duplicating."""
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else str(value).split(",")
+    result: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
 
 
 def build_condition(line: str = "", sort: str = "newest") -> str:
@@ -220,18 +238,55 @@ class BeikeAPIFetcher:
         retries: int = 2,
         page_interval: tuple[float, float] = (1.5, 3.0),
         transport: httpx.AsyncBaseTransport | None = None,
+        proxies: str | list[str] | None = None,
     ) -> None:
         self.city_code = city_code
         self.retries = retries
         self.page_interval = page_interval
-        self._client = httpx.AsyncClient(
-            timeout=timeout, headers=HEADERS, transport=transport, follow_redirects=True
-        )
         self._last_fetch = 0.0
         self._feed_query_id = ""
+        self._cooldown: dict[int, float] = {}
+        if transport is not None:
+            self._clients = [
+                httpx.AsyncClient(
+                    timeout=timeout,
+                    headers=HEADERS,
+                    transport=transport,
+                    follow_redirects=True,
+                )
+            ]
+        else:
+            configured = parse_proxies(proxies) if proxies is not None else parse_proxies(
+                settings.beike_proxies
+            )
+            self._clients = []
+            for index, proxy in enumerate(configured):
+                try:
+                    self._clients.append(
+                        httpx.AsyncClient(
+                            timeout=timeout,
+                            headers=HEADERS,
+                            proxy=proxy,
+                            follow_redirects=True,
+                        )
+                    )
+                except Exception as exc:
+                    log.warning(
+                        "beike_proxy_invalid",
+                        index=index,
+                        error=f"{type(exc).__name__}: {exc}"[:160],
+                    )
+            if not self._clients:
+                self._clients = [
+                    httpx.AsyncClient(
+                        timeout=timeout, headers=HEADERS, follow_redirects=True
+                    )
+                ]
+        self._cursor = 0
 
     async def close(self) -> None:
-        await self._client.aclose()
+        for client in self._clients:
+            await client.aclose()
 
     def reset_condition(self) -> None:
         """Forget the page cursor before switching to another list condition."""
@@ -244,28 +299,62 @@ class BeikeAPIFetcher:
         if wait > 0:
             await asyncio.sleep(wait)
 
+    def _pick_client(self) -> tuple[int, httpx.AsyncClient]:
+        now = time.monotonic()
+        count = len(self._clients)
+        for _ in range(count):
+            index = self._cursor % count
+            self._cursor += 1
+            until = self._cooldown.get(index, 0)
+            if until <= now:
+                return index, self._clients[index]
+        wait = min(self._cooldown.values()) - now if self._cooldown else 0
+        raise SourceError(f"beike proxy pool cooling ({max(0, wait):.0f}s)")
+
+    def _cool(self, index: int) -> None:
+        self._cooldown[index] = time.monotonic() + PROXY_COOLDOWN_SECONDS
+        log.warning("beike_proxy_cooling", index=index)
+
     async def _get(self, params: dict) -> dict:
         last_error: object = None
-        for attempt in range(self.retries + 1):
+        attempts = max(self.retries + 1, len(self._clients) * 2)
+        for attempt in range(attempts):
             try:
-                response = await self._client.get(API_URL, params=params)
+                index, client = self._pick_client()
+            except SourceError as exc:
+                last_error = exc
+                break
+            try:
+                response = await client.get(API_URL, params=params)
             except httpx.HTTPError as exc:
                 last_error = exc
+                self._cool(index)
             else:
                 if response.status_code in (403, 412):
-                    raise CaptchaRequiredError(
-                        f"beike app api http {response.status_code}; "
-                        "use CDP after manual verification"
+                    if len(self._clients) == 1:
+                        raise CaptchaRequiredError(
+                            f"beike app api http {response.status_code}; "
+                            "use CDP after manual verification"
+                        )
+                    self._cool(index)
+                    last_error = SourceError(
+                        f"beike app api http {response.status_code} via proxy {index}"
                     )
+                    continue
                 if response.status_code == 429 or response.status_code >= 500:
-                    last_error = SourceError(f"beike app api http {response.status_code}")
+                    self._cool(index)
+                    last_error = SourceError(
+                        f"beike app api http {response.status_code} via proxy {index}"
+                    )
                 elif response.status_code >= 400:
                     raise SourceError(f"beike app api http {response.status_code}")
                 else:
                     text = response.text
                     if not text.lstrip().startswith("{"):
                         if any(marker in text.lower() for marker in CAPTCHA_MARKERS):
-                            raise CaptchaRequiredError("beike app api returned a verification page")
+                            raise CaptchaRequiredError(
+                                "beike app api returned a verification page"
+                            )
                         raise SourceError(
                             f"beike app api returned non-JSON: {text[:120].strip()!r}"
                         )
@@ -273,8 +362,10 @@ class BeikeAPIFetcher:
                         return response.json()
                     except ValueError as exc:
                         raise SourceError("beike app api returned invalid JSON") from exc
-            if attempt < self.retries:
+            if attempt < attempts - 1:
                 await asyncio.sleep(2 * (attempt + 1) + random.random())
+        if isinstance(last_error, SourceError) and "cooling" in str(last_error):
+            raise last_error
         raise SourceError(f"beike app api request failed: {last_error}")
 
     async def fetch_page(

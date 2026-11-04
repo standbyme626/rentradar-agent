@@ -153,3 +153,32 @@ async def test_fetcher_raises_captcha_on_403():
             await fetcher.fetch_page(1, line="li110460696")
     finally:
         await fetcher.close()
+
+
+def test_parse_proxies_list_and_dedup():
+    from app.sources.beike_api import parse_proxies
+
+    assert parse_proxies("") == []
+    assert parse_proxies("http://a:1, http://b:2 ,http://a:1") == [
+        "http://a:1",
+        "http://b:2",
+    ]
+    assert parse_proxies(["http://a:1", "", " http://c:3 "]) == [
+        "http://a:1",
+        "http://c:3",
+    ]
+
+
+def test_fetcher_falls_back_to_direct_when_proxy_list_empty():
+    import asyncio
+
+    from app.sources.beike_api import BeikeAPIFetcher
+
+    async def main():
+        fetcher = BeikeAPIFetcher(proxies=[])
+        try:
+            assert len(fetcher._clients) == 1
+        finally:
+            await fetcher.close()
+
+    asyncio.run(main())

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     )
     log_level: str = Field("INFO", validation_alias="APP_LOG_LEVEL")
     cdp_url: str = Field("http://127.0.0.1:9333", validation_alias="APP_CDP_URL")
+    beike_proxies: str = Field("", validation_alias="BEIKE_PROXIES")
     pymd3_bin: str = Field(
         "/home/data/venvs/pymd3/bin/pymobiledevice3",
         validation_alias="APP_PYMD3_BIN",
