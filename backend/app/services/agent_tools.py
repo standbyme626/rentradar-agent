@@ -443,7 +443,11 @@ async def search_cards(
         stmt = stmt.where(Listing.tags.contains([tag]))
     if "南向" in must:
         stmt = stmt.where(Listing.orientation.ilike("%南%"))
-    stmt = stmt.order_by(Listing.score.desc().nullslast(), Listing.id.desc()).limit(100)
+    stmt = stmt.order_by(Listing.score.desc().nullslast(), Listing.id.desc())
+    # A commute limit is a hard filter applied after loading rows; a pre-limit
+    # could drop valid short-commute listings outside the top 100 by score.
+    if not conditions.get("commute"):
+        stmt = stmt.limit(100)
     rows = (await db.execute(stmt)).all()
     commute = await _latest_commute(db)
     max_commute = conditions.get("commute")
