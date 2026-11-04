@@ -703,6 +703,8 @@ async def stream(
         if session_id:
             session = await db.get(AgentSession, session_id)
         new_session = session is None
+        history = list((session.conditions or {}).get("_history") or []) if session else []
+        history = (history + [{"role": "user", "text": masked}])[-10:]
 
         parse_meta = llm_service.merge_meta()
         plan_meta = llm_service.merge_meta()
@@ -713,7 +715,9 @@ async def stream(
             rule = parse_conditions(masked)
             intent = None
             if allow_llm:
-                intent, parse_meta = await llm_service.parse_intent(db, masked, {})
+                intent, parse_meta = await llm_service.parse_intent(
+                    db, masked, {}, history=history
+                )
             conditions = _merge_llm_conditions(rule, intent, masked)
             session = AgentSession(
                 id=f"S-{uuid.uuid4().hex[:8].upper()}",
@@ -749,6 +753,7 @@ async def stream(
         quick_saved = False
         if not new_session and "对比" in message:
             quick_text = "已经切到对比视图。差异主要在通勤、租金和面积；如果两个人住，优先看两居。"
+            base["_history"] = (history + [{"role": "assistant", "text": quick_text}])[-10:]
             yield {"type": "tab", "tab": "compare"}
         elif not new_session and ("图片" in message or "ai" in lower):
             detail_text = (
@@ -758,9 +763,13 @@ async def stream(
             )
             yield {"type": "ai", "text": detail_text}
             quick_text = "封面分析在管理端「图片 / AI」页；本次推荐仍基于价格、通勤和标签。"
+            base["_history"] = (history + [{"role": "assistant", "text": quick_text}])[-10:]
         elif not new_session and ("保存" in message or "监控" in message):
             name = _monitor_name(base)
-            save_args = {"name": name, "conditions": base}
+            monitor_conditions = {
+                key: value for key, value in base.items() if not key.startswith("_")
+            }
+            save_args = {"name": name, "conditions": monitor_conditions}
             resolved: dict = {}
             started_save = time.monotonic()
             try:
@@ -795,6 +804,7 @@ async def stream(
             await db.commit()
             yield {"type": "toast", "message": f"已保存监控：{name}"}
             quick_text = "已保存为监控条件。新匹配/降价会按监控设置推送（需在设置中开启飞书通知）。"
+            base["_history"] = (history + [{"role": "assistant", "text": quick_text}])[-10:]
             plan = _build_plan(
                 conditions_summary(base),
                 guard_record["summary"],
@@ -862,11 +872,11 @@ async def stream(
             steps = None
             if allow_llm and settings.agent_native_tools:
                 steps, plan_meta = await llm_service.plan_tools_native(
-                    db, masked, conditions
+                    db, masked, conditions, history=history
                 )
             if allow_llm and not steps:
                 json_steps, json_meta = await llm_service.plan_tools(
-                    db, masked, conditions
+                    db, masked, conditions, history=history
                 )
                 steps = json_steps
                 plan_meta = llm_service.merge_meta(plan_meta, json_meta)
@@ -879,16 +889,18 @@ async def stream(
             rule = parse_conditions(masked, base)
             intent = None
             if allow_llm:
-                intent, parse_meta = await llm_service.parse_intent(db, masked, base)
+                intent, parse_meta = await llm_service.parse_intent(
+                    db, masked, base, history=history
+                )
             conditions = _merge_llm_conditions(rule, intent, masked)
             steps = None
             if allow_llm and settings.agent_native_tools:
                 steps, plan_meta = await llm_service.plan_tools_native(
-                    db, masked, conditions
+                    db, masked, conditions, history=history
                 )
             if allow_llm and not steps:
                 json_steps, json_meta = await llm_service.plan_tools(
-                    db, masked, conditions
+                    db, masked, conditions, history=history
                 )
                 steps = json_steps
                 plan_meta = llm_service.merge_meta(plan_meta, json_meta)
@@ -926,10 +938,17 @@ async def stream(
         llm_answer = None
         if allow_llm:
             llm_answer, answer_meta = await llm_service.answer(
-                db, cards, conditions, tool_results=tool_results
+                db,
+                cards,
+                conditions,
+                tool_results=tool_results,
+                history=history,
             )
         llm_meta = llm_service.merge_meta(parse_meta, plan_meta, answer_meta)
         answer = llm_answer or _answer_for(cards, conditions)
+        conditions["_history"] = (
+            history + [{"role": "assistant", "text": answer}]
+        )[-10:]
         if inspection["injections"]:
             answer = "检测到疑似指令覆盖/提示词探测，本次只按本地规则处理。" + answer
         if budget_blocked:
