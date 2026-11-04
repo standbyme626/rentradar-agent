@@ -5,6 +5,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -742,3 +743,40 @@ class ReferenceRent(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class TransitLine(Base):
+    """Cached SZMC subway line metadata (P3 data-source integration)."""
+
+    __tablename__ = "transit_lines"
+    __table_args__ = (UniqueConstraint("city_code", "line_code", name="uq_transit_line"),)
+
+    line_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    city_code: Mapped[str] = mapped_column(String(16), default="sz")
+    line_code: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(128))
+    color: Mapped[str] = mapped_column(String(16), default="2f7d5b")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TransitStation(Base):
+    """Cached SZMC subway line-stop (station may appear once per line)."""
+
+    __tablename__ = "transit_stations"
+    __table_args__ = (
+        UniqueConstraint("line_key", "station_code", name="uq_transit_station"),
+        Index("transit_stations_line_seq_idx", "line_key", "seq"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    line_key: Mapped[str] = mapped_column(
+        ForeignKey("transit_lines.line_key", ondelete="CASCADE")
+    )
+    station_code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(128))
+    seq: Mapped[int] = mapped_column(Integer, default=0)
+    lng: Mapped[float] = mapped_column(Float)
+    lat: Mapped[float] = mapped_column(Float)
+    coord_system: Mapped[str] = mapped_column(String(16), default="GCJ02")

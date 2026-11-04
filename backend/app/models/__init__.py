@@ -33,6 +33,8 @@ from app.models.entities import (
     Snapshot,
     Source,
     Task,
+    TransitLine,
+    TransitStation,
     User,
     Watchlist,
 )
@@ -72,6 +74,8 @@ __all__ = [
     "Snapshot",
     "Source",
     "Task",
+    "TransitLine",
+    "TransitStation",
     "User",
     "Watchlist",
 ]
