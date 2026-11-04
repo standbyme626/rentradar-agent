@@ -257,9 +257,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function start(prompt: string) {
-    const text =
-      prompt.trim() ||
-      `公司在${conditions.value.company || '公司地址'}，预算 4000，想住 5 号线沿线，通勤 40 分钟内，最好有电梯`
+    const text = prompt.trim()
+    if (!text) return
     phase.value = 'chat'
     messages.value = []
     cards.value = []

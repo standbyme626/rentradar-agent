@@ -351,7 +351,7 @@ function signalClass(value: number) {
             </div>
             <div v-else class="mt-3 rounded-xl border border-line bg-paper2 px-3 py-3 text-[11px] text-faint">暂无历史记录。</div>
             <div class="mt-3 rounded-xl border border-line bg-paper2 px-3.5 py-2.5 text-[10.5px] leading-5 text-muted">
-              评测覆盖 48 条条件查询 + 12 条注入/PII 探针；指标包含意图、字段、工具、参数、Schema、接地和护栏。LLM 在线打分未接入，页面不展示编造的 judge 分数。
+              评测覆盖 {{ evalData?.dataset_cases ?? '—' }} 条，其中查询 {{ evalMetrics?.query_cases ?? '—' }}、护栏 {{ evalMetrics?.guardrail_cases ?? '—' }}；指标包含意图、字段、工具、参数、Schema、接地和护栏。LLM 在线打分未接入，页面不展示编造的 judge 分数。
             </div>
           </section>
 
@@ -441,7 +441,7 @@ function signalClass(value: number) {
           <div class="flex items-center py-2"><span>保存监控（显式意图）</span><span class="ml-auto tag-green">已接入</span></div>
           <div class="flex items-center py-2"><span>预算硬停 / PII / 注入护栏</span><span class="ml-auto tag-green">已接入</span></div>
           <div class="flex items-center py-2"><span>工具 trace 持久化</span><span class="ml-auto tag-green">已接入</span></div>
-          <div class="flex items-center py-2"><span>60 条规则回归集</span><span class="ml-auto tag-green">已接入</span></div>
+          <div class="flex items-center py-2"><span>{{ evalData?.dataset_cases ?? '—' }} 条规则回归集</span><span class="ml-auto tag-green">已接入</span></div>
         </div>
       </section>
       <section class="card p-4">

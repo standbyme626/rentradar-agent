@@ -102,7 +102,9 @@ async def process_once() -> bool:
                 rescore = (
                     await rescore_listings(db, task, listing_ids)
                     if listing_ids
-                    else await rescore_task(db, task)
+                    else await rescore_task(
+                        db, task, limit=int(payload.get("limit") or 2000)
+                    )
                 )
                 result = {
                     "analysis": rescore,

@@ -474,7 +474,7 @@ async def _sync_commute_destination(db: AsyncSession, conditions: dict) -> dict 
                 Job(
                     task_id=task.id,
                     type="analysis",
-                    payload={"listing_ids": []},
+                    payload={"listing_ids": [], "limit": 50000},
                     status=JobStatus.queued,
                 )
             )
