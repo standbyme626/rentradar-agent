@@ -89,14 +89,16 @@ class SzmcProvider(BaseProvider):
 
     _station_index: dict[str, dict] | None = None
     _station_index_at: float = 0.0
+    _payload: dict | None = None
+    _payload_at: float = 0.0
 
-    async def _stations(self) -> dict[str, dict]:
+    async def _load_payload(self) -> dict:
         now = time.monotonic()
         if (
-            self._station_index is not None
-            and now - self._station_index_at < STATION_CACHE_SECONDS
+            type(self)._payload is not None
+            and now - type(self)._payload_at < STATION_CACHE_SECONDS
         ):
-            return self._station_index
+            return type(self)._payload
         try:
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 response = await client.get(STATION_URL)
@@ -113,9 +115,48 @@ class SzmcProvider(BaseProvider):
         index = build_station_index(payload)
         if not index:
             raise ProviderUnavailable("深圳地铁站点字典为空")
+        type(self)._payload = payload
+        type(self)._payload_at = now
         type(self)._station_index = index
         type(self)._station_index_at = now
-        return index
+        return payload
+
+    async def _stations(self) -> dict[str, dict]:
+        await self._load_payload()
+        return type(self)._station_index or {}
+
+    async def station_catalog(self) -> dict:
+        """Return metro lines/stations for the map layer (cached 24h)."""
+        payload = await self._load_payload()
+        lines = []
+        station_count = 0
+        for line in payload.get("l") or []:
+            points = []
+            for station in line.get("st") or []:
+                sid = str(station.get("sid") or "")
+                name = str(station.get("n") or "")
+                value = str(station.get("sl") or "")
+                if not sid or not name or "," not in value:
+                    continue
+                try:
+                    lng, lat = (float(item) for item in value.split(",", 1))
+                except ValueError:
+                    continue
+                points.append(
+                    {"sid": sid, "name": name, "lng": lng, "lat": lat}
+                )
+            if not points:
+                continue
+            station_count += len(points)
+            lines.append(
+                {
+                    "id": str(line.get("ln") or line.get("ls") or ""),
+                    "name": str(line.get("kn") or line.get("ln") or "地铁"),
+                    "color": str(line.get("cl") or "#2f7d5b"),
+                    "stations": points,
+                }
+            )
+        return {"lines": lines, "station_count": station_count}
 
     async def _min_time(self, departure: str, arrival: str) -> dict:
         try:

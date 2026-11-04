@@ -453,6 +453,25 @@ export interface MapCommunity {
   }
 }
 
+export interface TransitStation {
+  sid: string
+  name: string
+  lng: number
+  lat: number
+}
+
+export interface TransitLine {
+  id: string
+  name: string
+  color: string
+  stations: TransitStation[]
+}
+
+export interface TransitCatalog {
+  lines: TransitLine[]
+  station_count: number
+}
+
 export interface MapData {
   communities: MapCommunity[]
   center: [number, number]

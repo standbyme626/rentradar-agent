@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models import User
-from app.services import map_service
+from app.services import map_service, provider_runtime
 
 router = APIRouter(
     prefix="/api/maps", tags=["maps"], dependencies=[Depends(get_current_user)]
@@ -19,6 +19,12 @@ async def communities(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     return await map_service.communities(db, limit=limit, max_commute=max_commute)
+
+
+@router.get("/stations")
+async def stations(db: AsyncSession = Depends(get_db)) -> dict:
+    provider = await provider_runtime.ensure_enabled(db, "szmc")
+    return await provider.station_catalog()
 
 
 @router.get("/tiles/{layer}/{z}/{x}/{y}")

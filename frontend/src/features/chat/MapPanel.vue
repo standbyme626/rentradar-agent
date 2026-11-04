@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Maximize2, Minimize2, Minus, Plus, SlidersHorizontal } from 'lucide-vue-next'
-import type { MapCommunity, MapData } from '@/api/types'
+import type { MapCommunity, MapData, TransitCatalog } from '@/api/types'
 import { mapApi } from '@/api/services/maps'
 import { useChatStore } from '@/stores/chat'
 
 const store = useChatStore()
 const container = ref<HTMLElement | null>(null)
 const data = ref<MapData | null>(null)
+const transit = ref<TransitCatalog | null>(null)
+const showTransit = ref(true)
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 const message = ref('')
 const width = ref(820)
@@ -32,6 +34,22 @@ const visible = computed(() =>
   ),
 )
 const active = computed(() => visible.value.find((item) => item.id === activeId.value) ?? null)
+
+const transitLines = computed(() => {
+  if (!transit.value || !showTransit.value) return []
+  return transit.value.lines.map((line) => ({
+    ...line,
+    color: line.color.startsWith('#') ? line.color : `#${line.color}`,
+    points: line.stations.map((station) => {
+      const point = project(station.lng, station.lat)
+      return {
+        ...station,
+        x: point.x - centerPx.value.x + width.value / 2,
+        y: point.y - centerPx.value.y + height.value / 2,
+      }
+    }),
+  }))
+})
 
 function project(lng: number, lat: number, world = WORLD.value) {
   const sin = Math.sin((lat * Math.PI) / 180)
@@ -203,6 +221,11 @@ onMounted(async () => {
     status.value = 'error'
     message.value = '地图数据加载失败；请确认已登录且后端 /api/maps/communities 可用。'
   }
+  try {
+    transit.value = await mapApi.stations()
+  } catch {
+    transit.value = null
+  }
 })
 
 onBeforeUnmount(() => {
@@ -256,6 +279,36 @@ onBeforeUnmount(() => {
           style="background-image: linear-gradient(rgba(31, 93, 74, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(31, 93, 74, 0.05) 1px, transparent 1px); background-size: 32px 32px"
         />
 
+        <svg
+          v-if="transitLines.length"
+          class="pointer-events-none absolute inset-0 z-[5]"
+          :width="width"
+          :height="height"
+        >
+          <g v-for="line in transitLines" :key="line.id">
+            <polyline
+              :points="line.points.map((point) => `${point.x},${point.y}`).join(' ')"
+              fill="none"
+              :stroke="line.color"
+              stroke-width="3"
+              stroke-linejoin="round"
+              opacity="0.55"
+            />
+            <circle
+              v-for="station in line.points"
+              :key="`${line.id}-${station.sid}`"
+              :cx="station.x"
+              :cy="station.y"
+              r="2.6"
+              :fill="line.color"
+              stroke="#fff"
+              stroke-width="0.8"
+            >
+              <title>{{ line.name }} · {{ station.name }}</title>
+            </circle>
+          </g>
+        </svg>
+
         <button
           v-for="marker in markers"
           :key="marker.item.id"
@@ -287,8 +340,15 @@ onBeforeUnmount(() => {
           <option value="rent">按租金</option>
           <option value="score">按评分</option>
         </select>
+        <button
+          class="rounded-lg border px-2 py-1.5 text-[10.5px] shadow-sm"
+          :class="showTransit ? 'border-forest bg-forest-soft text-forest' : 'border-line bg-paper/95 text-muted'"
+          @click="showTransit = !showTransit"
+        >
+          {{ showTransit ? '地铁线路开' : '地铁线路关' }}
+        </button>
         <span class="rounded-full bg-paper/95 px-2 py-1 text-[10px] text-muted shadow-sm">
-          {{ visible.length }} 个小区 · {{ visible.reduce((sum, item) => sum + item.listings, 0) }} 套
+          {{ visible.length }} 个小区 · {{ visible.reduce((sum, item) => sum + item.listings, 0) }} 套 · 地铁 {{ transit?.station_count ?? 0 }} 站
         </span>
       </div>
 
@@ -342,7 +402,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 text-[9.5px] text-faint">
-      <span>天地图 WMTS · 服务端缓存 {{ data?.tiles.cache_days ?? 30 }} 天</span>
+      <span>天地图 WMTS · 服务端缓存 {{ data?.tiles.cache_days ?? 30 }} 天 · 地铁线网 SZMC</span>
       <span>·</span>
       <span>坐标统一 WGS-84（由贝壳 GCJ-02 转换）</span>
       <span v-if="data && !data.tiles.enabled" class="text-amber">· 未配置 TIANDITU_API_KEY，当前为纯坐标视图</span>
