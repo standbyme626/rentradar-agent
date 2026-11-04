@@ -111,7 +111,7 @@ function statusClass(status: PlanStatus) {
               </div>
               <p class="mt-2 text-[10.5px] leading-5 text-muted">{{ message.text }}</p>
               <p class="mt-1 text-[10px] leading-5 text-faint">
-                证据：图 2 墙面右下角；图文一致 0.86。当前未接入图片采集。
+                示例图片分析卡片；实际封面分析/视觉标签在房源详情抽屉中展示，以真实证据为准。
               </p>
             </div>
           </div>
