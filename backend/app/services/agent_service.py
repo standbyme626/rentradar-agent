@@ -696,7 +696,8 @@ async def stream(
         elif not new_session and ("图片" in message or "ai" in lower):
             detail_text = (
                 "封面级图片管线已接入后台：下载封面、dHash 去重、价格异常与中介话术信号，"
-                "两条以上信号才标记可疑。视觉大模型未授权，聊天中不主动触发下载。"
+                "两条以上信号才标记可疑。视觉标签已接 OpenCode Go，"
+                "但默认关闭；聊天中不主动触发下载。"
             )
             yield {"type": "ai", "text": detail_text}
             quick_text = "封面分析在管理端「图片 / AI」页；本次推荐仍基于价格、通勤和标签。"

@@ -194,7 +194,7 @@ async def score_listing(
             dining_score = min(1.0, math.log10(dining + 1) / math.log10(200))
             daily_score = min(1.0, math.log10(daily + 1) / math.log10(40))
             convenience_score = 0.7 * dining_score + 0.3 * daily_score
-            convenience_reason = f"1km 餐饮 {dining} 家 / 便利店超市菜场 {daily} 家（高德）"
+            convenience_reason = f"1km 餐饮 {dining} 家 / 便利店超市菜场 {daily} 家（周边）"
     reasons["convenience"] = convenience_reason
     total += 10 * convenience_score
 

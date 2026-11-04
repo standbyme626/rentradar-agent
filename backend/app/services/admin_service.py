@@ -237,8 +237,8 @@ async def overview(db: AsyncSession) -> dict:
         "runs": await list_runs(db, 10),
         "nextSteps": [
             {
-                "title": "图片/AI：详情图 + pHash + Qwen-VL",
-                "desc": "只对候选运行，不占高德额度；先做 Top 5，假房源需多信号交叉。",
+                "title": "图片/AI：详情图 + dHash + 可选视觉标签",
+                "desc": "只对候选运行，不占地图额度；先做 Top 5，假房源需多信号交叉。",
             },
             {
                 "title": "真实 Agent 工具运行时",
