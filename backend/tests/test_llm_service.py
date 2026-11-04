@@ -102,3 +102,14 @@ def test_history_block_keeps_recent_turns():
     assert "用户: 预算 4000，5 号线" in block
     assert "助手: 找到 6 套" in block
     assert _history_block([]) == ""
+
+
+def test_compact_history_folds_older_turns():
+    from app.services.memory_service import compact
+
+    history = [{"role": "user", "text": f"第{i}轮"} for i in range(1, 9)]
+    recent, summary = compact(history)
+    assert len(recent) == 6
+    assert "第1轮" in summary
+    assert "第2轮" in summary
+    assert "第8轮" not in summary
