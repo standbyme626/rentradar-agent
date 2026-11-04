@@ -295,8 +295,8 @@ onBeforeUnmount(() => {
               opacity="0.55"
             />
             <circle
-              v-for="station in line.points"
-              :key="`${line.id}-${station.sid}-${station.x}`"
+              v-for="(station, stationIndex) in line.points"
+              :key="`${line.id}-${station.sid}-${stationIndex}`"
               :cx="station.x"
               :cy="station.y"
               r="2.6"

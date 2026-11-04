@@ -139,6 +139,7 @@ async def ensure_catalog(db: AsyncSession, city_code: str = "sz") -> dict:
         catalog = await provider.station_catalog()
         return await sync_catalog(db, catalog, city_code=city_code)
     except Exception as exc:
+        await db.rollback()
         if current["lines"]:
             log.warning("transit_catalog_refresh_failed", error=str(exc)[:200])
             return {**current, "stale": True}
