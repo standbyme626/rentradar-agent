@@ -151,14 +151,15 @@ def _distance_m(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
 
 
 async def nearest_destination_key(
-    db: AsyncSession, key: str, *, max_meters: float = 1000.0
+    db: AsyncSession, key: str, *, max_meters: float = 2500.0
 ) -> str | None:
     """Reuse commute samples from a nearby destination key.
 
     The workspace geocoder can return a POI a few hundred metres from the
     station used for the existing samples, producing a new exact key with no
     samples. Falling back to the nearest sampled destination keeps the chat
-    usable instead of hard-filtering every listing out.
+    usable instead of hard-filtering every listing out. The 2.5 km radius
+    also absorbs geocoder drift for the same named destination.
     """
     try:
         lng, lat = (float(part) for part in key.split(",", 1))
