@@ -59,7 +59,8 @@ def test_merge_llm_conditions():
         rule,
         {"budget": 3500, "layout": "2室", "must": ["电梯"], "district": None},
     )
-    assert merged["budget"] == 3500
+    # Deterministic explicit budget wins over an LLM rewrite.
+    assert merged["budget"] == 4500
     assert merged["layout"] == "2室"
     assert merged["commute"] == 40
     assert "电梯" in merged["must"]

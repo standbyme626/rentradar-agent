@@ -62,6 +62,13 @@ LAYOUTS = (
 
 
 def _extract_budget(text: str) -> int | None:
+    range_match = re.search(
+        r"(\d{3,5})\s*[-–—~至到]\s*(\d{3,5})", text
+    )
+    if range_match:
+        high = int(range_match.group(2))
+        if 500 <= high <= 50000:
+            return high
     patterns = (
         r"预算\s*(?:压到|降到|控制在|改到)?\s*(\d{3,5})",
         r"(\d{3,5})\s*(?:元|块)(?:/月|每月)?",
@@ -120,6 +127,31 @@ COMPANY_PATTERNS = (
     ),
     re.compile(r"(?:通勤|上班)(?:到|去)\s*([^\s，,。；;、]{2,32})"),
 )
+BARE_LOCATION_SUFFIXES = (
+    "地铁站",
+    "地铁口",
+    "站",
+    "大厦",
+    "广场",
+    "科技园",
+    "产业园",
+    "中心",
+    "园区",
+    "路",
+    "街",
+    "道",
+)
+
+
+def _looks_like_bare_location(text: str) -> bool:
+    value = text.strip()
+    if not (2 <= len(value) <= 32):
+        return False
+    if any(word in value for word in ("预算", "通勤", "户型", "号线", "居", "室", "电梯")):
+        return False
+    return value.endswith(BARE_LOCATION_SUFFIXES)
+
+
 COMPANY_STOP_WORDS = (
     "预算",
     "通勤",
@@ -233,6 +265,9 @@ def parse_conditions(message: str, base: dict | None = None) -> dict:
         conditions["company_explicit"] = True
     elif "会展中心" in message:
         conditions["company"] = "深圳会展中心"
+        conditions["company_explicit"] = True
+    elif _looks_like_bare_location(message):
+        conditions["company"] = message.strip()[:64]
         conditions["company_explicit"] = True
     cleared = _cleared_fields(message)
     for key in ("budget", "commute", "layout", "district"):
@@ -374,6 +409,10 @@ def _merge_llm_conditions(
     for key in ("budget", "commute", "layout", "district", "company"):
         value = intent.get(key)
         if value is None or key in cleared:
+            continue
+        if key in {"budget", "commute", "layout", "district"} and merged.get(key) is not None:
+            # Deterministic extraction of an explicitly stated number/layout
+            # wins; the LLM may expand a range or hallucinate 40 from 30.
             continue
         if key == "company":
             explicit = bool(company_match) or (
