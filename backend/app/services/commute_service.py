@@ -11,7 +11,7 @@ import math
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -124,15 +124,27 @@ async def community_stats(
     destination: dict | None = None,
 ) -> dict | None:
     rows = await _samples(db, key, community_id=community_id)
+    if not rows:
+        fallback = await nearest_destination_key(db, key, min_communities=1)
+        if fallback and fallback != key:
+            rows = await _samples(db, fallback, community_id=community_id)
     return with_destination(summarize(rows), destination)
 
 
 async def bulk_stats(
     db: AsyncSession, key: str, *, destination: dict | None = None
 ) -> dict[int, dict]:
+    rows = await _samples(db, key)
     grouped: dict[int, list[CommuteSample]] = defaultdict(list)
-    for row in await _samples(db, key):
+    for row in rows:
         grouped[row.community_id].append(row)
+    if len(grouped) < 50:
+        fallback = await nearest_destination_key(db, key)
+        if fallback and fallback != key:
+            rows = await _samples(db, fallback)
+            grouped = defaultdict(list)
+            for row in rows:
+                grouped[row.community_id].append(row)
     result: dict[int, dict] = {}
     for community_id, rows in grouped.items():
         stats = with_destination(summarize(rows), destination)
@@ -151,7 +163,11 @@ def _distance_m(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
 
 
 async def nearest_destination_key(
-    db: AsyncSession, key: str, *, max_meters: float = 1000.0
+    db: AsyncSession,
+    key: str,
+    *,
+    max_meters: float = 2500.0,
+    min_communities: int = 50,
 ) -> str | None:
     """Reuse commute samples from a nearby destination key.
 
@@ -164,19 +180,28 @@ async def nearest_destination_key(
         lng, lat = (float(part) for part in key.split(",", 1))
     except (AttributeError, TypeError, ValueError):
         return None
-    rows = (
-        await db.execute(
-            select(CommuteSample.destination_key)
-            .where(
-                CommuteSample.direction == DIRECTION,
-                CommuteSample.fetched_at >= _window_start(),
+    counts = {
+        str(candidate): int(count)
+        for candidate, count in (
+            await db.execute(
+                select(
+                    CommuteSample.destination_key,
+                    func.count(func.distinct(CommuteSample.community_id)),
+                )
+                .where(
+                    CommuteSample.direction == DIRECTION,
+                    CommuteSample.fetched_at >= _window_start(),
+                )
+                .group_by(CommuteSample.destination_key)
             )
-            .distinct()
-        )
-    ).scalars().all()
+        ).all()
+    }
+    if counts.get(key, 0) >= min_communities:
+        return key
     best: str | None = None
+    best_count = -1
     best_distance = max_meters
-    for candidate in rows:
+    for candidate, count in counts.items():
         try:
             candidate_lng, candidate_lat = (
                 float(part) for part in candidate.split(",", 1)
@@ -184,10 +209,13 @@ async def nearest_destination_key(
         except (AttributeError, TypeError, ValueError):
             continue
         distance = _distance_m(lng, lat, candidate_lng, candidate_lat)
-        if distance <= best_distance:
+        if distance > max_meters:
+            continue
+        if count > best_count or (count == best_count and distance < best_distance):
             best = candidate
+            best_count = count
             best_distance = distance
-    return best
+    return best or key
 
 
 def _is_fresh(sample: CommuteSample, now: datetime) -> bool:
