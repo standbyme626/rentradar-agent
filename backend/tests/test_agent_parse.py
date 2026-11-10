@@ -94,3 +94,24 @@ def test_condition_reset_words():
     assert cleared["commute"] is None
     assert cleared["layout"] is None
     assert "电梯" not in cleared["must"]
+
+
+def test_budget_range_and_rule_precedence():
+    from app.services.agent_service import _merge_llm_conditions
+
+    rule = parse_conditions("预算 3500–4500，通勤 30 分钟，1–2 居室")
+    assert rule["budget"] == 4500
+    assert rule["commute"] == 30
+    merged = _merge_llm_conditions(
+        rule,
+        {"budget": 3000, "commute": 40, "layout": "2室"},
+        "预算 3500–4500，通勤 30 分钟，1–2 居室",
+    )
+    assert merged["budget"] == 4500
+    assert merged["commute"] == 30
+
+
+def test_bare_location_can_set_company():
+    conditions = parse_conditions("粤海门地铁站")
+    assert conditions["company"] == "粤海门地铁站"
+    assert conditions["company_explicit"] is True

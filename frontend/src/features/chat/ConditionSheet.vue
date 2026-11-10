@@ -31,13 +31,13 @@ function toggleMust(value: string) {
 function apply() {
   const must = form.musts.length ? `，最好有${form.musts.join('、')}` : ''
   const parts = [
-    form.company ? `公司在${form.company}` : '公司地址待补充',
+    form.company ? `公司在${form.company}` : null,
     form.budget ? `预算 ${form.budget}` : '预算不限',
     form.area ? form.area : '区域不限',
     form.commute ? `通勤 ${form.commute} 内` : '通勤不限',
     form.layout ? form.layout : '户型不限',
   ]
-  emit('apply', `${parts.join('，')}${must}`)
+  emit('apply', `${parts.filter(Boolean).join('，')}${must}`)
 }
 </script>
 
